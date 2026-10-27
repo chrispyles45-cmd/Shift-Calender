@@ -1,0 +1,1740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shift Calendar</title>
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Work Calendar">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(ellipse 900px 500px at 50% -5%, #1B1E27 0%, #0A0B0F 55%, #050609 100%);
+    color: #EDEBE4;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  #root { padding: 40px 16px 72px; display: flex; flex-direction: column; align-items: center; }
+  .wrap { width: 100%; max-width: 440px; transition: max-width 0.2s ease; }
+  .wrap.expanded { max-width: 780px; }
+  .eyebrow {
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #7D818C; font-weight: 600; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .eyebrow .line { width: 14px; height: 1px; background: #3A3D45; }
+  .header-row { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 22px; }
+  h1 { font-family: 'Bebas Neue', 'Inter', sans-serif; font-size: 56px; line-height: 0.85; margin: 0; letter-spacing: 0.01em; color: #F5F3ED; }
+  .year-wrap { position: relative; }
+  .year-btn {
+    font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: #9A9EA8; background: transparent;
+    border: none; border-bottom: 1.5px solid #33363F; cursor: pointer; padding-bottom: 2px; letter-spacing: 0.02em;
+  }
+  .year-popover {
+    position: absolute; right: 0; top: calc(100% + 10px); z-index: 10;
+    background: #15171D; border: 1px solid #272A33; border-radius: 14px;
+    padding: 14px; width: 200px; box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+  }
+  .step-row { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+  .step-btn {
+    width: 26px; height: 26px; border-radius: 6px; background: #1B1D24; border: 1px solid #272A33;
+    color: #B8BCC6; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+  }
+  #year-input {
+    flex: 1; text-align: center; font-size: 18px; font-weight: 700;
+    background: #0D0E12; border: 1px solid #272A33; border-radius: 8px;
+    color: #F5F3ED; padding: 6px 4px; width: 0;
+  }
+  #year-input::-webkit-outer-spin-button, #year-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .quick-btn {
+    font-size: 12.5px; padding: 7px 0; border-radius: 7px; background: #1B1D24; border: 1px solid #272A33;
+    color: #B8BCC6; cursor: pointer; font-weight: 600;
+  }
+  .this-year-btn { width: 100%; margin-top: 6px; font-weight: 700; }
+  .cycle-strip { display: flex; gap: 3px; margin-bottom: 8px; }
+  .cycle-seg { flex: 1; height: 22px; border-radius: 4px; }
+  .cycle-label { font-size: 11.5px; color: #6E727C; letter-spacing: 0.02em; margin-bottom: 24px; }
+  .nav-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 8px; }
+  .nav-btn {
+    width: 38px; height: 38px; border-radius: 10px; background: #15171D; border: 1px solid #22242B;
+    color: #EDEBE4; display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .nav-btn.wide { width: auto; padding: 0 18px; font-size: 12.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #B8BCC6; }
+  .nav-btn.expand-on { color: #15171D; background: #F5A623; border-color: #F5A623; gap: 8px; }
+  .nav-group { display: flex; gap: 8px; }
+  .dow-row { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 6px; }
+  .dow-cell { text-align: center; font-size: 10.5px; color: #565A64; font-weight: 700; letter-spacing: 0.1em; padding: 4px 0; }
+  .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 26px; }
+  .day-btn {
+    position: relative; aspect-ratio: 1; border-radius: 9px; border: 1.5px solid transparent;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+    font-size: 13.5px; font-weight: 600; transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .day-btn:hover { filter: brightness(1.15); }
+  .day-btn.selected {
+    border-color: #F5F3ED;
+    border-width: 2.5px;
+    box-shadow: 0 0 0 3px rgba(245, 243, 237, 0.22), 0 4px 14px rgba(0, 0, 0, 0.45);
+    transform: scale(1.06);
+    z-index: 2;
+  }
+  .day-btn.today { font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+  .marker-dot {
+    position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%;
+    z-index: 3; box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+  }
+  .year-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 26px; }
+  .mini-month { background: #101116; border: 1px solid #1E2027; border-radius: 12px; padding: 12px 12px 14px; }
+  .mini-title { font-size: 12.5px; font-weight: 800; color: #B8BCC6; margin-bottom: 8px; letter-spacing: 0.03em; }
+  .mini-dow-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; margin-bottom: 3px; }
+  .mini-dow-cell { text-align: center; font-size: 8px; color: #4A4D56; font-weight: 700; letter-spacing: 0.02em; }
+  .mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+  .mini-btn {
+    position: relative; aspect-ratio: 1; border-radius: 3px; border: none; cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 600;
+  }
+  .mini-btn:hover { filter: brightness(1.3); }
+  .mini-btn.selected {
+    border: 1.5px solid #F5F3ED;
+    box-shadow: 0 0 0 2px rgba(245, 243, 237, 0.25);
+    transform: scale(1.15);
+    z-index: 2;
+  }
+  .mini-btn.today { border: 1px solid #4E9BFF; font-weight: 800; }
+  .detail-card {
+    background: linear-gradient(160deg, #15171D 0%, #101116 100%); border: 1px solid #22242B; border-radius: 16px;
+    padding: 18px 20px; margin-bottom: 18px; display: flex; align-items: center; gap: 16px;
+  }
+  .detail-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .detail-date { font-size: 12.5px; color: #7D818C; margin-bottom: 3px; }
+  .detail-label { font-size: 17px; font-weight: 800; color: #F5F3ED; }
+  .detail-sub { font-size: 12.5px; color: #7D818C; margin-top: 1px; }
+  .badge-row { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; border-radius: 6px; padding: 3px 8px; }
+  .crew-card {
+    background: linear-gradient(165deg, #15171D 0%, #101116 100%);
+    border: 1px solid #22242B; border-radius: 16px;
+    padding: 16px 18px; margin-bottom: 14px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.02);
+  }
+  .crew-title {
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #8F94A0; font-weight: 700;
+    margin-bottom: 12px; display: flex; align-items: center; gap: 7px;
+  }
+  .crew-title-icon { display: inline-flex; color: #565A64; flex-shrink: 0; }
+  .crew-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid #1C1E24; }
+  .crew-row:first-of-type { border-top: none; padding-top: 2px; }
+  .crew-name { font-size: 13.5px; font-weight: 600; color: #C8CBD3; }
+  .crew-name.you { color: #F5F3ED; font-weight: 800; }
+  .crew-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 11px; border-radius: 999px; }
+  .section-divider {
+    display: flex; align-items: center; gap: 10px; margin: 28px 0 14px;
+  }
+  .section-divider .line { flex: 1; height: 1px; background: linear-gradient(90deg, #22242B, transparent); }
+  .section-divider .line.right { background: linear-gradient(270deg, #22242B, transparent); }
+  .section-divider span {
+    font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: #6E727C; font-weight: 700; white-space: nowrap;
+  }
+  .legend-row {
+    display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+    background: #101116; border: 1px solid #1E2027; border-radius: 14px; padding: 14px 16px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 7px; }
+  .legend-swatch { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+  .legend-text { font-size: 12.5px; color: #9A9EA8; font-weight: 500; }
+  .legend-count { font-size: 12.5px; color: #565A64; }
+  .picker-wrap { width: 100%; max-width: 380px; text-align: center; padding-top: 40px; }
+  .picker-sub { font-size: 14px; color: #9A9EA8; margin-bottom: 26px; }
+  .picker-list { display: flex; flex-direction: column; gap: 10px; }
+  .picker-btn {
+    font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 700; color: #F5F3ED;
+    background: #15171D; border: 1px solid #272A33; border-radius: 12px; padding: 16px;
+    cursor: pointer; text-align: left;
+  }
+  .picker-btn:hover { border-color: #F5A623; }
+  .picker-cancel { margin-top: 16px; background: transparent; border: none; color: #7D818C; font-size: 13px; cursor: pointer; }
+  .switch-link { background: transparent; border: none; color: #7D818C; font-size: 11px; text-decoration: underline; cursor: pointer; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+(function () {
+  // ---- Shift rule ----
+  // Cycle: 8 day shifts, 4 off, 7 afternoon shifts, 2 off = 21 day cycle
+  // Anchor: July 31, 2026 is day 0 of the cycle (first day of an 8-day DAY block)
+  var ANCHOR = new Date(2026, 6, 31);
+  var CYCLE_LEN = 21;
+  var CREWS = [
+    { id: 'cj', label: 'Chris/CJ', abbr: 'CJ', anchor: new Date(2026, 6, 31), members: [{ id: 'cj_chris', name: 'Chris' }, { id: 'cj_cj', name: 'CJ' }] },
+    { id: 'ab', label: 'Allen/Brad', abbr: 'AB', anchor: new Date(2026, 7, 7), members: [{ id: 'ab_allen', name: 'Allen' }, { id: 'ab_brad', name: 'Brad' }] },
+    { id: 'bj', label: 'Bill/Justin', abbr: 'BJ', anchor: new Date(2026, 6, 24), members: [{ id: 'bj_bill', name: 'Bill' }, { id: 'bj_justin', name: 'Justin' }] },
+  ];
+  var CYCLE_SEGMENTS = [
+    { len: 8, type: 'day' },
+    { len: 4, type: 'off' },
+    { len: 7, type: 'afternoon' },
+    { len: 2, type: 'off' },
+  ];
+
+  function daysBetween(a, b) {
+    var ms = 24 * 60 * 60 * 1000;
+    var ua = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+    var ub = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+    return Math.round((ub - ua) / ms);
+  }
+
+  function cycleIndexFor(anchor, date) {
+    var idx = daysBetween(anchor, date) % CYCLE_LEN;
+    if (idx < 0) idx += CYCLE_LEN;
+    return idx;
+  }
+
+  function shiftFromIndex(idx) {
+    if (idx <= 7) return 'day';
+    if (idx <= 11) return 'off';
+    if (idx <= 18) return 'afternoon';
+    return 'off';
+  }
+
+  function cycleIndex(date) { return cycleIndexFor(ANCHOR, date); }
+  function getShift(date) { return shiftFromIndex(cycleIndex(date)); }
+  function getShiftForCrew(crew, date) { return shiftFromIndex(cycleIndexFor(crew.anchor, date)); }
+
+  // ---- Front/Back role rotation ----
+  // Each crew's two members swap "Front" and "Back" jobs every time they return
+  // from their 4-day break (i.e. at the day-block -> afternoon-block transition).
+  // They do NOT swap after the short 2-day break (afternoon-block -> day-block).
+  // Calibrated to a known fixed date rather than "today" (which changes) so it stays
+  // correct regardless of when someone opens the page.
+  var ROLE_CALIBRATION_DATE = new Date(2026, 7, 19); // Aug 19, 2026
+  var BACK_PERSON_AT_CALIBRATION = { cj: 'cj_chris', ab: 'ab_allen', bj: 'bj_justin' };
+
+  function toggleCount(anchor, date) {
+    var idx = cycleIndexFor(anchor, date);
+    var cycleNum = Math.floor(daysBetween(anchor, date) / CYCLE_LEN);
+    return cycleNum + (idx >= 12 ? 1 : 0);
+  }
+  function roleForPerson(crew, personId, date) {
+    var backId = BACK_PERSON_AT_CALIBRATION[crew.id];
+    if (!backId) return null;
+    var diff = toggleCount(crew.anchor, date) - toggleCount(crew.anchor, ROLE_CALIBRATION_DATE);
+    var sameParity = ((diff % 2) + 2) % 2 === 0;
+    var isBackAtCalibration = personId === backId;
+    var isBackNow = sameParity ? isBackAtCalibration : !isBackAtCalibration;
+    return isBackNow ? 'Back' : 'Front';
+  }
+
+  var SHIFT_META = {
+    day: { label: 'Day shift', sub: '7:00a – 3:00p', color: '#F5A623' },
+    afternoon: { label: 'Afternoon shift', sub: '3:00p – 11:00p', color: '#5C7CFA' },
+    midnight: { label: 'Midnight shift', sub: '11:00p – 7:00a', color: '#8B5CF6' },
+    off: { label: 'Off', sub: 'No shift scheduled', color: '#454A58' },
+    vacation: { label: 'On vacation', sub: 'Not scheduled (vacation)', color: '#B565E8' },
+  };
+  var PICKUP_TYPES = ['day', 'afternoon', 'midnight'];
+
+  var HOLIDAY_COLOR = '#9CA3AF';
+  var PAYDAY_COLOR = '#22C55E';
+  var OPENING_COLOR = '#F5F3ED';
+  var DANGER_COLOR = '#FF4D5E';
+  var PAY_ANCHOR = new Date(2026, 6, 31); // today is a payday; repeats every 14 days
+
+  function isPayday(date) {
+    var diff = daysBetween(PAY_ANCHOR, date) % 14;
+    if (diff < 0) diff += 14;
+    return diff === 0;
+  }
+
+  // ---- Pay period + overtime/double-time calculation ----
+  // Pay period = 14 days (two Mon\u2013Sun weeks), ending the Sunday before payday.
+  // Rules (as confirmed): >8 hrs in a single day = OT; 6th consecutive day worked
+  // in a Mon\u2013Sun week = all hours that day at 1.5x; 7th consecutive day worked
+  // in that week = all hours that day at 2x (double time).
+  var SHIFT_HOURS = 8;
+  var SUNDAY_PREMIUM_RATE = 2.50; // per hour, any hours worked on a Sunday
+  var DEFAULT_RATE_HISTORY = [
+    { id: 'r0', effective: Date.UTC(2020, 0, 1), rate: 37.97 },
+    { id: 'r1', effective: Date.UTC(2026, 5, 1), rate: 42.09 }, // confirmed raise, effective Jun 1, 2026
+  ];
+  var PERIOD_REF_START = new Date(2026, 6, 13); // a known period start (Monday)
+  var PERIOD_LEN = 14;
+
+  function periodContaining(date) {
+    var diff = daysBetween(PERIOD_REF_START, date);
+    var periodIndex = Math.floor(diff / PERIOD_LEN);
+    var start = new Date(PERIOD_REF_START);
+    start.setDate(start.getDate() + periodIndex * PERIOD_LEN);
+    var end = new Date(start);
+    end.setDate(end.getDate() + 13);
+    return { start: start, end: end };
+  }
+
+  function computePayPeriodHours(periodStart) {
+    var weeks = [[], []];
+    for (var i = 0; i < 14; i++) {
+      var d = new Date(periodStart);
+      d.setDate(d.getDate() + i);
+      weeks[Math.floor(i / 7)].push(d);
+    }
+
+    var totals = { regular: 0, overtime: 0, doubleTime: 0, sundayHours: 0 };
+    var days = [];
+
+    weeks.forEach(function (week) {
+      var workedOrdinal = 0;
+      week.forEach(function (date) {
+        var shift = myEffectiveShift(date);
+        var scheduledWorked = (shift === 'day' || shift === 'afternoon') && !isTradedAway(date);
+        var pickups = getPickups(date);
+        var worked = scheduledWorked || pickups.length > 0;
+        var entry = {
+          date: date, worked: worked, shift: shift, pickups: pickups,
+          regular: 0, overtime: 0, doubleTime: 0, hours: 0,
+        };
+        if (worked) {
+          workedOrdinal++;
+          var extraPickups = pickups.filter(function (t) { return t !== shift; });
+          var hrs = (scheduledWorked ? SHIFT_HOURS : 0) + extraPickups.length * SHIFT_HOURS;
+          entry.hours = hrs;
+          var isHol = isHolidayDate(date);
+
+          if (workedOrdinal === 7) {
+            entry.doubleTime = hrs;
+          } else if (workedOrdinal === 6 || isHol) {
+            entry.overtime = hrs;
+          } else {
+            entry.regular = Math.min(hrs, 8);
+            entry.overtime = Math.max(0, hrs - 8);
+          }
+          totals.regular += entry.regular;
+          totals.overtime += entry.overtime;
+          totals.doubleTime += entry.doubleTime;
+          if (date.getDay() === 0) totals.sundayHours += hrs;
+        }
+        days.push(entry);
+      });
+    });
+
+    return { totals: totals, days: days };
+  }
+
+  function computeYTDHours(uptoDate) {
+    var year = uptoDate.getFullYear();
+    var firstPeriod = periodContaining(new Date(year, 0, 1));
+    var targetPeriod = periodContaining(uptoDate);
+    var totals = { regular: 0, overtime: 0, doubleTime: 0 };
+    var periodCount = 0;
+    var cursor = new Date(firstPeriod.start);
+    while (cursor.getTime() <= targetPeriod.start.getTime()) {
+      var r = computePayPeriodHours(cursor);
+      totals.regular += r.totals.regular;
+      totals.overtime += r.totals.overtime;
+      totals.doubleTime += r.totals.doubleTime;
+      periodCount++;
+      cursor.setDate(cursor.getDate() + 14);
+    }
+    return { totals: totals, periodCount: periodCount, from: firstPeriod.start, through: targetPeriod.end };
+  }
+
+  function computeGrossPay(totals, periodStart) {
+    var baseRate = getBaseRateFor(periodStart);
+    var otRate = baseRate * 1.5;
+    var dtRate = baseRate * 2;
+    var regularPay = totals.regular * baseRate;
+    var otPay = totals.overtime * otRate;
+    var dtPay = totals.doubleTime * dtRate;
+    var sundayPay = totals.sundayHours * SUNDAY_PREMIUM_RATE;
+    return {
+      baseRate: baseRate, otRate: otRate, dtRate: dtRate,
+      regularPay: regularPay, otPay: otPay, dtPay: dtPay, sundayPay: sundayPay,
+      total: regularPay + otPay + dtPay + sundayPay,
+    };
+  }
+
+  // ---- Take-home pay + 401k ----
+  // Federal/state withholding modeled as linear functions of gross pay (IRS percentage-method
+  // withholding is progressive, so a flat % badly over/under-shoots on unusual OT periods).
+  // Fit via linear regression across 7 real pay stubs spanning ~$3,966\u2013$10,893 gross.
+  // These parts are fixed (statutory or fitted); the deduction amounts below are user-editable.
+  var FIXED_PAY_RATES = {
+    k401EmployerMatchRatio: 1 / 3,  // employer $ per employee $ (confirmed exactly 1/3 across stubs)
+    oasdiRate: 0.062,               // statutory
+    medicareRate: 0.0145,           // statutory
+    fedSlope: 0.22464,
+    fedIntercept: -437.28,
+    stateSlope: 0.03139,
+    stateIntercept: -37.05,
+  };
+  var DEFAULT_PAY_SETTINGS = {
+    k401EmployeeRate: 0.11937, // Traditional 401K / gross \u2014 pre-tax, reduces taxable income
+    rothK401Rate: 0,           // Roth 401K / gross \u2014 post-tax, does NOT reduce taxable income
+    dental: 3.23,
+    medical: 30.00,
+    hsa: 70.00,
+    unionAvg: 30.00, // Union Dues \u2014 alternates ~$60/$0 by period, averages to ~$30
+  };
+
+  function computeTakeHome(grossTotal) {
+    var ps = state.paySettings;
+    var flatPreTax = ps.dental + ps.medical + ps.hsa;
+    var k401Traditional = grossTotal * ps.k401EmployeeRate;
+    var k401Roth = grossTotal * (ps.rothK401Rate || 0);
+    // Employer match applies to combined Traditional + Roth employee deferral (standard behavior);
+    // the match itself lands in a pre-tax account regardless of which bucket the employee chose.
+    var k401Employer = (k401Traditional + k401Roth) * FIXED_PAY_RATES.k401EmployerMatchRatio;
+    var ficaBase = Math.max(0, grossTotal - flatPreTax);
+    var oasdi = ficaBase * FIXED_PAY_RATES.oasdiRate;
+    var medicare = ficaBase * FIXED_PAY_RATES.medicareRate;
+    // Fed/state withholding is only reduced by the Traditional side \u2014 Roth is post-tax, so it does
+    // NOT lower taxable wages (that's the whole point of Roth). The fitted model below is calibrated
+    // against gross pay with Traditional-only contributions, so it stays accurate as Traditional moves;
+    // Roth simply doesn't touch this calculation at all, which is the correct behavior for Roth.
+    var fed = Math.max(0, grossTotal * FIXED_PAY_RATES.fedSlope + FIXED_PAY_RATES.fedIntercept);
+    var state_ = Math.max(0, grossTotal * FIXED_PAY_RATES.stateSlope + FIXED_PAY_RATES.stateIntercept);
+    var preTax = k401Traditional + flatPreTax;
+    var taxes = oasdi + medicare + fed + state_;
+    var postTax = ps.unionAvg + k401Roth;
+    var net = grossTotal - preTax - taxes - postTax;
+    return {
+      k401Employee: k401Traditional, k401Traditional: k401Traditional, k401Roth: k401Roth, k401Employer: k401Employer,
+      oasdi: oasdi, medicare: medicare, fed: fed, state: state_,
+      flatPreTax: flatPreTax, flatPostTax: ps.unionAvg,
+      taxes: taxes, preTax: preTax, postTax: postTax, net: net,
+    };
+  }
+
+  function buildSplitBackground(baseColor, accents) {
+    if (accents.length === 0) return baseColor;
+    var stops = [baseColor].concat(accents);
+    var n = stops.length;
+    var pct = 100 / n;
+    var parts = stops.map(function (c, i) { return c + ' ' + (i * pct) + '%, ' + c + ' ' + ((i + 1) * pct) + '%'; });
+    return 'linear-gradient(135deg, ' + parts.join(', ') + ')';
+  }
+
+  var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  var MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+  function buildMonthGrid(year, month) {
+    var startWeekday = new Date(year, month, 1).getDay();
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var cells = [];
+    for (var i = 0; i < startWeekday; i++) cells.push(null);
+    for (var d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d));
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  }
+
+  function isSameDay(a, b) {
+    return a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+
+  function dateKey(d) { return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); }
+
+  function getEaster(year) {
+    var a = year % 19, b = Math.floor(year / 100), c = year % 100;
+    var d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+    var h = (19 * a + b - d - g + 15) % 30;
+    var i = Math.floor(c / 4), k = c % 4;
+    var l = (32 + 2 * e + 2 * i - h - k) % 7;
+    var m = Math.floor((a + 11 * h + 22 * l) / 451);
+    var month = Math.floor((h + l - 7 * m + 114) / 31);
+    var day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(year, month - 1, day);
+  }
+
+  function nthWeekday(year, month, weekday, n) {
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var count = 0;
+    for (var d = 1; d <= daysInMonth; d++) {
+      var date = new Date(year, month, d);
+      if (date.getDay() === weekday) { count++; if (count === n) return date; }
+    }
+    return null;
+  }
+
+  function lastWeekday(year, month, weekday) {
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    for (var d = daysInMonth; d >= 1; d--) {
+      var date = new Date(year, month, d);
+      if (date.getDay() === weekday) return date;
+    }
+    return null;
+  }
+
+  function buildHolidayMap(year) {
+    var easter = getEaster(year);
+    var goodFriday = new Date(easter); goodFriday.setDate(easter.getDate() - 2);
+    var thanksgiving = nthWeekday(year, 10, 4, 4);
+    var dayAfterThanksgiving = new Date(thanksgiving); dayAfterThanksgiving.setDate(thanksgiving.getDate() + 1);
+    var list = [
+      { date: new Date(year, 0, 1), name: "New Year's Day" },
+      { date: nthWeekday(year, 1, 1, 3), name: "President's Day" },
+      { date: goodFriday, name: 'Good Friday' },
+      { date: lastWeekday(year, 4, 1), name: 'Decoration Day' },
+      { date: new Date(year, 6, 4), name: 'Independence Day' },
+      { date: nthWeekday(year, 8, 1, 1), name: 'Labor Day' },
+      { date: new Date(year, 10, 11), name: "Veterans' Day" },
+      { date: thanksgiving, name: 'Thanksgiving Day' },
+      { date: dayAfterThanksgiving, name: 'Friday after Thanksgiving' },
+      { date: new Date(year, 11, 24), name: 'Christmas Eve' },
+      { date: new Date(year, 11, 25), name: 'Christmas Day' },
+    ];
+    var map = {};
+    list.forEach(function (h) { map[dateKey(h.date)] = h.name; });
+    return map;
+  }
+  function isHolidayDate(date) {
+    return !!buildHolidayMap(date.getFullYear())[dateKey(date)];
+  }
+
+  // ---- Icons (inline SVG, no external deps) ----
+  function svg(inner, size) { return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>'; }
+  var ICON = {
+    chevronLeft: svg('<polyline points="15 18 9 12 15 6"/>', 18),
+    chevronRight: svg('<polyline points="9 18 15 12 9 6"/>', 18),
+    chevronUp: svg('<polyline points="18 15 12 9 6 15"/>', 14),
+    chevronDown: svg('<polyline points="6 9 12 15 18 9"/>', 14),
+    layoutGrid: svg('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>', 15),
+    calendarDays: svg('<rect x="3" y="4" width="18" height="17" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>', 15),
+    clock: svg('<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>', 13),
+    dollar: svg('<line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5.5c0-1.7-2.2-3-5-3s-5 1.3-5 3 2.2 3 5 3 5 1.3 5 3-2.2 3-5 3-5-1.3-5-3"/>', 13),
+    trendUp: svg('<polyline points="3 17 9 11 13 15 21 6"/><polyline points="15 6 21 6 21 12"/>', 13),
+    tag: svg('<path d="M12 2H2v10l10.5 10.5a1 1 0 0 0 1.4 0l8.6-8.6a1 1 0 0 0 0-1.4L12 2Z"/><circle cx="6.5" cy="6.5" r="1.5"/>', 13),
+    briefcase: svg('<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>', 13),
+    pencil: svg('<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>', 13),
+    users: svg('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>', 13),
+  };
+  function cardIcon(iconKey) { return '<span class="crew-title-icon">' + ICON[iconKey] + '</span>'; }
+  function sunIcon(color, size) {
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="22"/>' +
+      '<line x1="2" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="22" y2="12"/>' +
+      '<line x1="4.9" y1="4.9" x2="6.6" y2="6.6"/><line x1="17.4" y1="17.4" x2="19.1" y2="19.1"/>' +
+      '<line x1="4.9" y1="19.1" x2="6.6" y2="17.4"/><line x1="17.4" y1="6.6" x2="19.1" y2="4.9"/></svg>';
+  }
+  function moonIcon(color, size) {
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg>';
+  }
+
+  // ---- State ----
+  var today = new Date();
+
+  var state = {
+    viewYear: today.getFullYear(),
+    viewMonth: today.getMonth(),
+    selected: today,
+    yearPickerOpen: false,
+    expanded: false,
+    myCrew: 'cj',
+    vacations: [],
+    vacationPanelOpen: false,
+    notes: {},
+    pickups: {},
+    rateHistory: [],
+    ratePanelOpen: false,
+    paySettings: {},
+    paySettingsPanelOpen: false,
+    tradedAway: {},
+    trades: [],
+    tradePanelOpen: false,
+    vacationShowPast: false,
+    tradeShowPast: false,
+  };
+  state.vacations = loadVacations();
+  state.notes = loadNotes();
+  state.pickups = loadPickups();
+  state.rateHistory = loadRateHistory();
+  state.paySettings = loadPaySettings();
+  state.tradedAway = loadTradedAway();
+  state.trades = loadTrades();
+
+  function getCrew(id) {
+    for (var i = 0; i < CREWS.length; i++) if (CREWS[i].id === id) return CREWS[i];
+    return null;
+  }
+  function myAnchor() {
+    var c = getCrew(state.myCrew);
+    return c ? c.anchor : CREWS[0].anchor;
+  }
+  function myShift(date) { return shiftFromIndex(cycleIndexFor(myAnchor(), date)); }
+  function myCycleIndex(date) { return cycleIndexFor(myAnchor(), date); }
+
+  // ---- Vacations (per-person, stored locally on this device only) ----
+  // ---- Cloud sync (so this isn't stuck on one device/browser) ----
+  // Data lives in localStorage on this device only. Use Export/Import (further
+  // down) to back it up or move it to another device \u2014 no external server
+  // involved, so there's nothing that can silently fail or go down.
+  function allAppData() {
+    return {
+      vacations: state.vacations, notes: state.notes, pickups: state.pickups, rateHistory: state.rateHistory,
+      paySettings: state.paySettings, tradedAway: state.tradedAway, trades: state.trades,
+    };
+  }
+  function importAppData(data) {
+    if (!data || typeof data !== 'object') return false;
+    if (data.vacations) state.vacations = data.vacations;
+    if (data.notes) state.notes = data.notes;
+    if (data.pickups) state.pickups = data.pickups;
+    if (data.rateHistory && data.rateHistory.length) state.rateHistory = data.rateHistory;
+    if (data.paySettings) state.paySettings = Object.assign({}, DEFAULT_PAY_SETTINGS, data.paySettings);
+    if (data.tradedAway) state.tradedAway = data.tradedAway;
+    if (data.trades) state.trades = data.trades;
+    saveVacations(); saveNotes(); savePickups(); saveRateHistory(); savePaySettings(); saveTradedAway(); saveTrades();
+    return true;
+  }
+
+  function loadVacations() {
+    try {
+      var raw = localStorage.getItem('shiftcal_vacations');
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      return parsed.map(function (v) { return { id: v.id, personId: v.personId, start: v.start, end: v.end }; });
+    } catch (e) { return []; }
+  }
+  function saveVacations() {
+    try { localStorage.setItem('shiftcal_vacations', JSON.stringify(state.vacations)); } catch (e) {}
+  }
+  function dateOnlyTs(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
+  function toInputDateStr(d) {
+    var y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+  function getPerson(personId) {
+    for (var i = 0; i < CREWS.length; i++) {
+      var m = CREWS[i].members.find(function (m) { return m.id === personId; });
+      if (m) return m;
+    }
+    return null;
+  }
+  function isPersonOnVacation(personId, date) {
+    var t = dateOnlyTs(date);
+    for (var i = 0; i < state.vacations.length; i++) {
+      var v = state.vacations[i];
+      if (v.personId === personId && t >= v.start && t <= v.end) return true;
+    }
+    return false;
+  }
+  function membersOnVacation(crew, date) {
+    return crew.members.filter(function (m) { return isPersonOnVacation(m.id, date); });
+  }
+  function crewFullyOut(crew, date) {
+    return crew.members.every(function (m) { return isPersonOnVacation(m.id, date); });
+  }
+  function effectiveShiftForCrew(crew, date) {
+    if (crewFullyOut(crew, date)) return 'vacation';
+    return getShiftForCrew(crew, date);
+  }
+  var MY_PERSON_ID = 'cj_chris'; // assumes "Chris" is you, matching Christopher Pyles on your stubs
+
+  function myEffectiveShift(date) {
+    var dayPickups = getPickups(date);
+    if (dayPickups.length) return dayPickups[0]; // show the picked-up shift's color
+    if (isPersonOnVacation(MY_PERSON_ID, date)) return 'vacation'; // your own vacation, regardless of your partner's status
+    if (isTradedAway(date)) return 'off';
+    var c = getCrew(state.myCrew);
+    return c ? effectiveShiftForCrew(c, date) : myShift(date);
+  }
+
+  // Every distinct shift type actually worked that day (scheduled + any pickups), for showing
+  // a split color when you work a double (e.g. your normal Day shift plus a picked-up Afternoon).
+  function myWorkedShiftTypes(date) {
+    var types = [];
+    if (!isPersonOnVacation(MY_PERSON_ID, date) && !isTradedAway(date)) {
+      var c = getCrew(state.myCrew);
+      var raw = c ? getShiftForCrew(c, date) : 'off';
+      if (raw === 'day' || raw === 'afternoon') types.push(raw);
+    }
+    getPickups(date).forEach(function (t) { if (types.indexOf(t) === -1) types.push(t); });
+    return types;
+  }
+  // Returns array of { shift: 'day'|'afternoon', crew, missing: [members], needed: 1 or 2 }
+  function getOpenings(date) {
+    var openings = [];
+    CREWS.forEach(function (crew) {
+      var raw = getShiftForCrew(crew, date);
+      if (raw !== 'day' && raw !== 'afternoon') return;
+      var missing = membersOnVacation(crew, date);
+      if (missing.length > 0) {
+        openings.push({ shift: raw, crew: crew, missing: missing, needed: missing.length });
+      }
+    });
+    return openings;
+  }
+  // Same as getOpenings, but leaves out your own crew \u2014 for display purposes,
+  // since you already know when you're on vacation and don't need it flagged as a gap.
+  function getOtherCrewOpenings(date) {
+    return getOpenings(date).filter(function (o) { return o.crew.id !== state.myCrew; });
+  }
+  function addVacation(personId, startStr, endStr) {
+    if (!personId || !startStr || !endStr) return false;
+    var s = new Date(startStr + 'T00:00:00');
+    var e = new Date(endStr + 'T00:00:00');
+    if (isNaN(s) || isNaN(e) || e < s) return false;
+    state.vacations.push({ id: 'v' + Date.now(), personId: personId, start: dateOnlyTs(s), end: dateOnlyTs(e) });
+    saveVacations();
+    return true;
+  }
+  function updateVacation(id, personId, startStr, endStr) {
+    if (!personId || !startStr || !endStr) return false;
+    var s = new Date(startStr + 'T00:00:00');
+    var e = new Date(endStr + 'T00:00:00');
+    if (isNaN(s) || isNaN(e) || e < s) return false;
+    var v = state.vacations.find(function (v) { return v.id === id; });
+    if (!v) return false;
+    v.personId = personId; v.start = dateOnlyTs(s); v.end = dateOnlyTs(e);
+    saveVacations();
+    return true;
+  }
+  function removeVacation(id) {
+    state.vacations = state.vacations.filter(function (v) { return v.id !== id; });
+    saveVacations();
+  }
+
+  // ---- Daily notes (stored locally on this device only) ----
+  function loadNotes() {
+    try {
+      var raw = localStorage.getItem('shiftcal_notes');
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+  function saveNotes() {
+    try { localStorage.setItem('shiftcal_notes', JSON.stringify(state.notes)); } catch (e) {}
+  }
+  function getNote(date) { return state.notes[dateKey(date)] || ''; }
+  function setNote(date, text) {
+    var key = dateKey(date);
+    text = (text || '').trim();
+    if (text) state.notes[key] = text;
+    else delete state.notes[key];
+    saveNotes();
+  }
+
+  // ---- Picked-up shifts (extra shifts beyond your normal rotation) ----
+  function loadPickups() {
+    try {
+      var raw = localStorage.getItem('shiftcal_pickups');
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+  function savePickups() {
+    try { localStorage.setItem('shiftcal_pickups', JSON.stringify(state.pickups)); } catch (e) {}
+  }
+  function getPickups(date) { return state.pickups[dateKey(date)] || []; }
+  function togglePickup(date, type) {
+    var key = dateKey(date);
+    var list = state.pickups[key] || [];
+    var idx = list.indexOf(type);
+    if (idx === -1) list = list.concat([type]);
+    else list = list.filter(function (t) { return t !== type; });
+    if (list.length) state.pickups[key] = list;
+    else delete state.pickups[key];
+    savePickups();
+  }
+
+  // ---- Pay rate history (so raises don't distort past pay periods) ----
+  function loadRateHistory() {
+    try {
+      var raw = localStorage.getItem('shiftcal_rates');
+      var parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed || !parsed.length) return DEFAULT_RATE_HISTORY.slice();
+      return parsed;
+    } catch (e) { return DEFAULT_RATE_HISTORY.slice(); }
+  }
+  function saveRateHistory() {
+    try { localStorage.setItem('shiftcal_rates', JSON.stringify(state.rateHistory)); } catch (e) {}
+  }
+  function sortedRateHistory() {
+    return state.rateHistory.slice().sort(function (a, b) { return a.effective - b.effective; });
+  }
+  function getBaseRateFor(date) {
+    var sorted = sortedRateHistory();
+    var t = dateOnlyTs(date);
+    var applicable = sorted[0] ? sorted[0].rate : 42.09;
+    for (var i = 0; i < sorted.length; i++) {
+      if (sorted[i].effective <= t) applicable = sorted[i].rate;
+      else break;
+    }
+    return applicable;
+  }
+  function addRateChange(effectiveStr, rateStr) {
+    var d = new Date(effectiveStr + 'T00:00:00');
+    var rate = parseFloat(rateStr);
+    if (isNaN(d.getTime()) || isNaN(rate) || rate <= 0) return false;
+    state.rateHistory.push({ id: 'rate' + Date.now(), effective: dateOnlyTs(d), rate: rate });
+    saveRateHistory();
+    return true;
+  }
+  function removeRateChange(id) {
+    if (state.rateHistory.length <= 1) return; // keep at least one rate on record
+    state.rateHistory = state.rateHistory.filter(function (r) { return r.id !== id; });
+    saveRateHistory();
+  }
+
+  // ---- Editable pay deduction settings (401k %, HSA, dental, medical, union avg) ----
+  function loadPaySettings() {
+    try {
+      var raw = localStorage.getItem('shiftcal_pay_settings');
+      var parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed) return Object.assign({}, DEFAULT_PAY_SETTINGS);
+      return Object.assign({}, DEFAULT_PAY_SETTINGS, parsed);
+    } catch (e) { return Object.assign({}, DEFAULT_PAY_SETTINGS); }
+  }
+  function savePaySettings() {
+    try { localStorage.setItem('shiftcal_pay_settings', JSON.stringify(state.paySettings)); } catch (e) {}
+  }
+  function updatePaySettings(fields) {
+    var k401 = parseFloat(fields.k401);
+    var k401Roth = parseFloat(fields.k401Roth);
+    var dental = parseFloat(fields.dental);
+    var medical = parseFloat(fields.medical);
+    var hsa = parseFloat(fields.hsa);
+    var union = parseFloat(fields.union);
+    if (!isNaN(k401)) state.paySettings.k401EmployeeRate = Math.max(0, k401) / 100;
+    if (!isNaN(k401Roth)) state.paySettings.rothK401Rate = Math.max(0, k401Roth) / 100;
+    if (!isNaN(dental)) state.paySettings.dental = Math.max(0, dental);
+    if (!isNaN(medical)) state.paySettings.medical = Math.max(0, medical);
+    if (!isNaN(hsa)) state.paySettings.hsa = Math.max(0, hsa);
+    if (!isNaN(union)) state.paySettings.unionAvg = Math.max(0, union);
+    savePaySettings();
+  }
+
+  // ---- Shift trades: gave away a scheduled shift (pairs with "Picked up a shift" for the swap) ----
+  function loadTradedAway() {
+    try {
+      var raw = localStorage.getItem('shiftcal_traded');
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+  function saveTradedAway() {
+    try { localStorage.setItem('shiftcal_traded', JSON.stringify(state.tradedAway)); } catch (e) {}
+  }
+  function isTradedAway(date) { return !!state.tradedAway[dateKey(date)]; }
+  function toggleTradedAway(date) {
+    var key = dateKey(date);
+    if (state.tradedAway[key]) delete state.tradedAway[key];
+    else state.tradedAway[key] = true;
+    saveTradedAway();
+  }
+
+  // ---- Combined trade log: one action updates BOTH the day you gave away and the day you covered ----
+  function loadTrades() {
+    try {
+      var raw = localStorage.getItem('shiftcal_trades');
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+  function saveTrades() {
+    try { localStorage.setItem('shiftcal_trades', JSON.stringify(state.trades)); } catch (e) {}
+  }
+  function dateKeyFromInputStr(s) {
+    var d = new Date(s + 'T00:00:00');
+    return dateKey(d);
+  }
+  function addTrade(withName, giveStr, pickupStr, pickupShift) {
+    if (!giveStr || !pickupStr || !pickupShift) return false;
+    var g = new Date(giveStr + 'T00:00:00');
+    var p = new Date(pickupStr + 'T00:00:00');
+    if (isNaN(g.getTime()) || isNaN(p.getTime())) return false;
+    var id = 'trade' + Date.now();
+    state.trades.push({ id: id, withName: (withName || '').trim(), give: giveStr, pickup: pickupStr, pickupShift: pickupShift });
+
+    var gKey = dateKeyFromInputStr(giveStr);
+    state.tradedAway[gKey] = id;
+
+    var pKey = dateKeyFromInputStr(pickupStr);
+    var list = state.pickups[pKey] || [];
+    if (list.indexOf(pickupShift) === -1) list = list.concat([pickupShift]);
+    state.pickups[pKey] = list;
+
+    saveTrades(); saveTradedAway(); savePickups();
+    return true;
+  }
+  function removeTrade(id) {
+    var t = state.trades.find(function (x) { return x.id === id; });
+    if (!t) return;
+    state.trades = state.trades.filter(function (x) { return x.id !== id; });
+
+    var gKey = dateKeyFromInputStr(t.give);
+    if (state.tradedAway[gKey] === id) delete state.tradedAway[gKey];
+
+    var pKey = dateKeyFromInputStr(t.pickup);
+    var list = (state.pickups[pKey] || []).filter(function (s) { return s !== t.pickupShift; });
+    if (list.length) state.pickups[pKey] = list; else delete state.pickups[pKey];
+
+    saveTrades(); saveTradedAway(); savePickups();
+  }
+
+  function escapeAttr(s) { return String(s).replace(/"/g, '&quot;'); }
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function render() {
+    var root = document.getElementById('root');
+    var holidayMap = buildHolidayMap(state.viewYear);
+    function holidayName(date) { return holidayMap[dateKey(date)] || null; }
+    var fmtShort = function (d) { return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
+
+    var selectedShift = myEffectiveShift(state.selected);
+    var selIdx = myCycleIndex(state.selected);
+
+    var html = '';
+    html += '<div class="wrap' + (state.expanded ? ' expanded' : '') + '">';
+
+    // Eyebrow
+    html += '<div class="eyebrow"><span class="line"></span>Rotation · 8 on · 4 off · 7 on · 2 off</div>';
+    html += '<div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;">';
+    html += '<span style="font-size:11px;color:#7D818C;">Saved on this device</span>';
+    html += '<button class="switch-link" id="export-data-btn" style="margin-left:auto;">Export data</button>';
+    html += '<button class="switch-link" id="import-data-btn">Import data</button>';
+    html += '<input type="file" id="import-file-input" accept="application/json" style="display:none;">';
+    html += '</div>';
+
+    // Header
+    html += '<div class="header-row">';
+    html += '<h1>' + (state.expanded ? 'Year overview' : MONTH_NAMES[state.viewMonth]) + '</h1>';
+    html += '<div class="year-wrap" id="year-wrap">';
+    html += '<button class="year-btn" id="year-toggle-btn">' + state.viewYear + '</button>';
+    if (state.yearPickerOpen) {
+      html += '<div class="year-popover" id="year-popover">';
+      html += '<div class="step-row">';
+      html += '<button class="step-btn" id="year-step-down">' + ICON.chevronDown + '</button>';
+      html += '<input type="number" id="year-input" value="' + state.viewYear + '" />';
+      html += '<button class="step-btn" id="year-step-up">' + ICON.chevronUp + '</button>';
+      html += '</div>';
+      html += '<div class="quick-grid">';
+      [-5, -1, 1, 5].forEach(function (off) {
+        html += '<button class="quick-btn" data-year-off="' + off + '">' + (off > 0 ? '+' + off : off) + '</button>';
+      });
+      html += '</div>';
+      html += '<button class="quick-btn this-year-btn" id="year-this-year">This year</button>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+
+    // Cycle strip
+    html += '<div class="cycle-strip">';
+    for (var ci = 0; ci < CYCLE_LEN; ci++) {
+      var type = 'off', acc = 0;
+      for (var s = 0; s < CYCLE_SEGMENTS.length; s++) {
+        if (ci < acc + CYCLE_SEGMENTS[s].len) { type = CYCLE_SEGMENTS[s].type; break; }
+        acc += CYCLE_SEGMENTS[s].len;
+      }
+      var marked = ci === selIdx;
+      var bg = type === 'off' ? '#22242B' : SHIFT_META[type].color;
+      html += '<div class="cycle-seg" style="background:' + bg + ';opacity:' + (type === 'off' ? 1 : 0.85) + ';outline:' + (marked ? '2px solid #F5F3ED' : 'none') + ';outline-offset:1px;"></div>';
+    }
+    html += '</div>';
+    html += '<div class="cycle-label">Day ' + (selIdx + 1) + ' of ' + CYCLE_LEN + ' in the rotation — ' + SHIFT_META[selectedShift].label.toLowerCase() + '</div>';
+
+    // Nav row
+    html += '<div class="nav-row">';
+    html += '<button class="nav-btn" id="nav-prev">' + ICON.chevronLeft + '</button>';
+    html += '<div class="nav-group">';
+    html += '<button class="nav-btn wide" id="nav-today">Today</button>';
+    html += '<button class="nav-btn wide' + (state.expanded ? ' expand-on' : '') + '" id="nav-expand">' + (state.expanded ? ICON.calendarDays : ICON.layoutGrid) + '&nbsp;' + (state.expanded ? 'Month view' : 'Full year') + '</button>';
+    html += '</div>';
+    html += '<button class="nav-btn" id="nav-next">' + ICON.chevronRight + '</button>';
+    html += '</div>';
+
+    if (!state.expanded) {
+      // Weekday row
+      html += '<div class="dow-row">';
+      DOW.forEach(function (d) { html += '<div class="dow-cell">' + d + '</div>'; });
+      html += '</div>';
+
+      // Month grid
+      var grid = buildMonthGrid(state.viewYear, state.viewMonth);
+      var counts = { day: 0, afternoon: 0, off: 0 };
+      grid.forEach(function (d) { if (d) counts[myShift(d)]++; });
+
+      html += '<div class="month-grid">';
+      grid.forEach(function (date) {
+        if (!date) { html += '<div></div>'; return; }
+        var shift = myEffectiveShift(date);
+        var meta = SHIFT_META[shift];
+        var isToday = isSameDay(date, today);
+        var isSelected = isSameDay(date, state.selected);
+        var hName = holidayName(date);
+        var pDay = isPayday(date);
+        var opens = getOtherCrewOpenings(date);
+        var hasOpening = opens.length > 0;
+        var hasNote = !!getNote(date);
+        var datePickups = getPickups(date);
+        var hasPickup = datePickups.length > 0;
+        var workedTypes = myWorkedShiftTypes(date);
+        var isDouble = workedTypes.length > 1;
+        var hasMarker = hName || pDay || hasOpening || isDouble;
+        var baseColor = shift === 'off' ? '#15171D' : meta.color;
+        var accents = [];
+        if (isDouble) { baseColor = SHIFT_META[workedTypes[0]].color; workedTypes.slice(1).forEach(function (t) { accents.push(SHIFT_META[t].color); }); }
+        if (hName) accents.push(HOLIDAY_COLOR);
+        if (pDay) accents.push(PAYDAY_COLOR);
+        if (hasOpening) accents.push(OPENING_COLOR);
+        var bg = buildSplitBackground(baseColor, accents);
+        var textColor = hasMarker ? '#15171D' : (shift === 'off' ? '#6E727C' : '#15171D');
+        var textShadow = hasMarker ? '0 0 3px rgba(245,243,237,0.5)' : 'none';
+        var titleAttr = [];
+        if (isDouble) titleAttr.push('Double: ' + workedTypes.map(function (t) { return SHIFT_META[t].label; }).join(' + '));
+        if (hName) titleAttr.push(hName);
+        if (pDay) titleAttr.push('Payday');
+        if (hasOpening) titleAttr.push(opens.map(function (o) {
+          return (o.shift === 'day' ? 'Day' : 'Afternoon') + ' shift needs ' + o.needed + ' (' +
+            o.missing.map(function (m) { return m.name + ' (' + roleForPerson(o.crew, m.id, date) + ')'; }).join(', ') + ' out)';
+        }).join(', '));
+        if (hasNote) titleAttr.push('Note added');
+        if (hasPickup) titleAttr.push('Picked up: ' + datePickups.join(', '));
+        html += '<button class="day-btn' + (isSelected ? ' selected' : '') + (isToday ? ' today' : '') +
+          '" data-ts="' + date.getTime() + '" title="' + escapeAttr(titleAttr.join(' · ')) +
+          '" style="background:' + bg + ';color:' + textColor + ';text-shadow:' + textShadow + ';opacity:' + (shift === 'off' && !hasMarker ? 1 : (isSelected || hasMarker ? 1 : 0.88)) + ';">' +
+          date.getDate() +
+          (hasNote ? '<span class="marker-dot" style="top:auto;bottom:3px;left:3px;right:auto;background:#F5F3ED;"></span>' : '') +
+          (hasPickup ? '<span class="marker-dot" style="top:auto;bottom:3px;right:3px;left:auto;background:' + SHIFT_META.midnight.color + ';"></span>' : '') +
+          '</button>';
+      });
+      html += '</div>';
+    } else {
+      // Year overview grid
+      html += '<div class="year-grid">';
+      for (var mIdx = 0; mIdx < 12; mIdx++) {
+        var miniGrid = buildMonthGrid(state.viewYear, mIdx);
+        html += '<div class="mini-month"><div class="mini-title">' + MONTH_SHORT[mIdx] + '</div>';
+        html += '<div class="mini-dow-row">';
+        DOW.forEach(function (d) { html += '<div class="mini-dow-cell">' + d + '</div>'; });
+        html += '</div>';
+        html += '<div class="mini-grid">';
+        miniGrid.forEach(function (date) {
+          if (!date) { html += '<div></div>'; return; }
+          var shift = myEffectiveShift(date);
+          var meta = SHIFT_META[shift];
+          var isToday = isSameDay(date, today);
+          var isSelected = isSameDay(date, state.selected);
+          var hName = holidayName(date);
+          var pDay = isPayday(date);
+          var opens = getOtherCrewOpenings(date);
+          var hasOpening = opens.length > 0;
+          var miniWorkedTypes = myWorkedShiftTypes(date);
+          var miniIsDouble = miniWorkedTypes.length > 1;
+          var hasMarker = hName || pDay || hasOpening || miniIsDouble;
+          var miniBase = shift === 'off' ? '#20222A' : meta.color;
+          var miniAccents = [];
+          if (miniIsDouble) { miniBase = SHIFT_META[miniWorkedTypes[0]].color; miniWorkedTypes.slice(1).forEach(function (t) { miniAccents.push(SHIFT_META[t].color); }); }
+          if (hName) miniAccents.push(HOLIDAY_COLOR);
+          if (pDay) miniAccents.push(PAYDAY_COLOR);
+          if (hasOpening) miniAccents.push(OPENING_COLOR);
+          var bg = buildSplitBackground(miniBase, miniAccents);
+          var textColor = hasMarker ? '#15171D' : (shift === 'off' ? '#6E727C' : '#15171D');
+          var textShadow = hasMarker ? '0 0 2px rgba(245,243,237,0.5)' : 'none';
+          var titleAttr = [MONTH_SHORT[mIdx] + ' ' + date.getDate()];
+          if (miniIsDouble) titleAttr.push('Double shift');
+          if (hName) titleAttr.push(hName);
+          if (pDay) titleAttr.push('Payday');
+          if (hasOpening) titleAttr.push(opens.map(function (o) { return o.shift + ' needs ' + o.needed; }).join(', '));
+          if (getNote(date)) titleAttr.push('Note added');
+          titleAttr.push(meta.label);
+          html += '<button class="mini-btn' + (isSelected ? ' selected' : '') + (isToday ? ' today' : '') +
+            '" data-ts="' + date.getTime() + '" data-mini="1" title="' + escapeAttr(titleAttr.join(' — ')) +
+            '" style="background:' + bg + ';color:' + textColor + ';text-shadow:' + textShadow + ';opacity:' + (shift === 'off' && !hasMarker ? 1 : 0.9) + ';">' +
+            date.getDate() + '</button>';
+        });
+        html += '</div></div>';
+      }
+      html += '</div>';
+    }
+
+    // Detail card
+    var selHoliday = holidayName(state.selected);
+    var selPayday = isPayday(state.selected);
+    html += '<div class="detail-card">';
+    html += '<div class="detail-icon" style="background:' + (selectedShift === 'off' ? '#22242B' : SHIFT_META[selectedShift].color) + ';">';
+    if (selectedShift === 'day') html += sunIcon('#15171D', 20);
+    else if (selectedShift === 'afternoon') html += moonIcon('#15171D', 20);
+    else if (selectedShift === 'vacation') html += '<span style="font-size:16px;">\u2708\ufe0f</span>';
+    else html += '<span style="font-size:18px;color:#565A64;">—</span>';
+    html += '</div>';
+    html += '<div>';
+    html += '<div class="detail-date">' + state.selected.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) + '</div>';
+    html += '<div class="detail-label">' + SHIFT_META[selectedShift].label + '</div>';
+    html += '<div class="detail-sub">' + SHIFT_META[selectedShift].sub + '</div>';
+    var selOpenings = getOtherCrewOpenings(state.selected);
+    if (selHoliday || selPayday || selOpenings.length) {
+      html += '<div class="badge-row">';
+      if (selHoliday) html += '<div class="badge" style="color:#15171D;background:' + HOLIDAY_COLOR + ';">' + selHoliday + '</div>';
+      if (selPayday) html += '<div class="badge" style="color:#F5F3ED;background:#22242B;"><span style="width:5px;height:5px;border-radius:50%;background:' + PAYDAY_COLOR + ';"></span>Payday</div>';
+      selOpenings.forEach(function (o) {
+        var whoText = o.missing.map(function (m) { return m.name + ' (' + roleForPerson(o.crew, m.id, state.selected) + ')'; }).join(' & ') + ' out';
+        html += '<div class="badge" style="color:#15171D;background:' + OPENING_COLOR + ';">' +
+          (o.shift === 'day' ? 'Day' : 'Afternoon') + ' short ' + o.needed + ' (' + o.crew.label + ': ' + whoText + ')</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div></div>';
+
+    // Shift changes: picked up extra shifts, and/or gave away a scheduled one (trades)
+    var selPickups = getPickups(state.selected);
+    var myCrewObj = getCrew(state.myCrew);
+    var selRawShift = myCrewObj ? getShiftForCrew(myCrewObj, state.selected) : 'off';
+    var selIsTraded = isTradedAway(state.selected);
+    html += '<div class="crew-card">';
+    html += '<div class="crew-title">' + cardIcon('briefcase') + 'Shift changes on this day</div>';
+
+    html += '<div style="font-size:11px;color:#9A9EA8;font-weight:600;margin-bottom:6px;">Picked up a shift?</div>';
+    html += '<div style="display:flex;gap:6px;">';
+    PICKUP_TYPES.forEach(function (type) {
+      var active = selPickups.indexOf(type) !== -1;
+      html += '<button class="quick-btn" data-toggle-pickup="' + type + '" style="flex:1;' +
+        (active ? 'border-color:' + SHIFT_META[type].color + ';color:#F5F3ED;background:' + SHIFT_META[type].color + '22;' : '') +
+        '">' + (type === 'day' ? 'Day' : type === 'afternoon' ? 'Afternoon' : 'Midnight') + '</button>';
+    });
+    html += '</div>';
+    var selScheduledShift = myEffectiveShift(state.selected);
+    var selExtraPickups = selPickups.filter(function (t) { return t !== selScheduledShift; });
+    if (selPickups.length) {
+      var selDuplicate = selPickups.length - selExtraPickups.length;
+      html += '<div style="font-size:11.5px;color:#7D818C;margin-top:8px;">+' + (selExtraPickups.length * SHIFT_HOURS) +
+        ' extra hour' + (selExtraPickups.length * SHIFT_HOURS === 1 ? '' : 's') + ' added to this day\u2019s pay period total.' +
+        (selDuplicate > 0 ? ' (' + selDuplicate + ' pickup matches your already-scheduled shift, so it doesn\u2019t add extra hours.)' : '') + '</div>';
+    }
+
+    if (selIsTraded) {
+      var selTrade = state.trades.find(function (tr) { return dateKeyFromInputStr(tr.give) === dateKey(state.selected); });
+      html += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid #1E2027;">';
+      html += '<div style="font-size:11.5px;color:' + DANGER_COLOR + ';">Traded away' + (selTrade && selTrade.withName ? ' to ' + escapeHtml(selTrade.withName) : '') + ' \u2014 manage it in Shift Trades below.</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // Shift Trades (combined log: one action updates both sides)
+    html += '<div class="crew-card">';
+    html += '<div class="crew-title" style="display:flex;align-items:center;justify-content:space-between;"><span>' + cardIcon('users') + 'Shift trades</span><button class="switch-link" id="trades-btn">' + (state.tradePanelOpen ? 'Close' : 'Log a trade') + '</button></div>';
+    var tradeTodayTs = dateOnlyTs(today);
+    var isTradePast = function (tr) {
+      var latest = Math.max(dateOnlyTs(new Date(tr.give + 'T00:00:00')), dateOnlyTs(new Date(tr.pickup + 'T00:00:00')));
+      return latest < tradeTodayTs;
+    };
+    var upcomingTrades = state.trades.filter(function (tr) { return !isTradePast(tr); });
+    var pastTrades = state.trades.filter(isTradePast);
+    var tradesToShow = (state.tradeShowPast ? state.trades.slice() : upcomingTrades)
+      .sort(function (a, b) { return new Date(b.give) - new Date(a.give); });
+    if (tradesToShow.length === 0) {
+      html += '<div style="font-size:12.5px;color:#7D818C;">' + (pastTrades.length && !state.tradeShowPast ? 'No upcoming trades.' : 'No trades logged.') + '</div>';
+    } else {
+      tradesToShow.forEach(function (tr) {
+        var gDate = new Date(tr.give + 'T00:00:00');
+        var pDate = new Date(tr.pickup + 'T00:00:00');
+        html += '<div class="crew-row">';
+        html += '<span class="crew-name">Gave <b>' + fmtShort(gDate) + '</b>' + (tr.withName ? ' to ' + escapeHtml(tr.withName) : '') +
+          '<br><span style="color:#7D818C;font-weight:500;">Covering ' + fmtShort(pDate) + ' (' + SHIFT_META[tr.pickupShift].label + ') instead</span></span>';
+        html += '<button class="switch-link" data-remove-trade="' + tr.id + '" style="color:' + DANGER_COLOR + ';">Remove</button>';
+        html += '</div>';
+      });
+    }
+    if (pastTrades.length > 0) {
+      html += '<button class="switch-link" id="toggle-trade-past-btn" style="margin-top:8px;">' +
+        (state.tradeShowPast ? 'Hide past' : 'Show past (' + pastTrades.length + ')') + '</button>';
+    }
+    if (state.tradePanelOpen) {
+      html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #1E2027;display:flex;flex-direction:column;gap:8px;">';
+      html += '<input type="text" id="trade-name" placeholder="Who\u2019s covering for you? (optional)" style="width:100%;box-sizing:border-box;background:#0D0E12;border:1px solid #272A33;border-radius:8px;color:#F5F3ED;padding:9px;font-size:13px;">';
+      html += '<div>';
+      html += '<div style="font-size:11px;color:#9A9EA8;margin-bottom:4px;">Day you gave away</div>';
+      html += '<input type="date" id="trade-give-date" style="width:100%;box-sizing:border-box;background:#0D0E12;border:1px solid #272A33;border-radius:8px;color:#F5F3ED;padding:9px;font-size:13px;">';
+      html += '</div>';
+      html += '<div>';
+      html += '<div style="font-size:11px;color:#9A9EA8;margin-bottom:4px;">Day you\u2019re covering instead</div>';
+      html += '<input type="date" id="trade-pickup-date" style="width:100%;box-sizing:border-box;background:#0D0E12;border:1px solid #272A33;border-radius:8px;color:#F5F3ED;padding:9px;font-size:13px;">';
+      html += '</div>';
+      html += '<div>';
+      html += '<div style="font-size:11px;color:#9A9EA8;margin-bottom:6px;">Shift you\u2019re covering</div>';
+      html += '<div style="display:flex;gap:6px;">';
+      PICKUP_TYPES.forEach(function (type, i) {
+        var picked = state._tradeShiftDraft === type || (!state._tradeShiftDraft && i === 0);
+        html += '<button class="quick-btn" data-trade-shift="' + type + '" style="flex:1;' +
+          (picked ? 'border-color:' + SHIFT_META[type].color + ';color:#F5F3ED;' : '') +
+          '">' + (type === 'day' ? 'Day' : type === 'afternoon' ? 'Afternoon' : 'Midnight') + '</button>';
+      });
+      html += '</div></div>';
+      html += '<button class="quick-btn" id="trade-save-btn" style="width:100%;font-weight:700;margin-top:4px;">Save trade</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // Daily note
+    var existingNote = getNote(state.selected);
+    html += '<div class="crew-card">';
+    html += '<div class="crew-title">' + cardIcon('pencil') + 'Note for this day</div>';
+    html += '<textarea id="note-input" placeholder="e.g. Covered the shift for Allen" style="width:100%;min-height:64px;background:#0D0E12;border:1px solid #272A33;border-radius:8px;color:#F5F3ED;padding:10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box;">' + escapeHtml(existingNote) + '</textarea>';
+    html += '<div style="display:flex;gap:8px;margin-top:8px;">';
+    html += '<button class="quick-btn" id="note-save-btn" style="flex:1;font-weight:700;">Save note</button>';
+    if (existingNote) html += '<button class="quick-btn" id="note-clear-btn" style="color:' + DANGER_COLOR + ';">Clear</button>';
+    html += '</div></div>';
+
+    // Crew status — who's working this day across all 3 crews
+    html += '<div class="crew-card"><div class="crew-title" style="display:flex;align-items:center;justify-content:space-between;">';
+    html += '<span>' + cardIcon('users') + 'Who is working</span><button class="switch-link" id="vacations-btn">Vacations</button></div>';
+    CREWS.forEach(function (crew) {
+      var raw = getShiftForCrew(crew, state.selected);
+      var cs = effectiveShiftForCrew(crew, state.selected);
+      var meta = SHIFT_META[cs];
+      var pillBg = (cs === 'off') ? '#22242B' : meta.color;
+      var pillColor = (cs === 'off') ? '#7D818C' : '#15171D';
+      var isYou = crew.id === state.myCrew;
+      var missing = membersOnVacation(crew, state.selected);
+      html += '<div class="crew-row" style="align-items:flex-start;">';
+      html += '<span class="crew-name' + (isYou ? ' you' : '') + '">' + crew.label + (isYou ? ' (you)' : '');
+      var present = crew.members.filter(function (m) { return missing.indexOf(m) === -1; });
+      var roleLine = present.map(function (m) { return m.name + ' (' + roleForPerson(crew, m.id, state.selected) + ')'; }).join(' \u00b7 ');
+      if (roleLine) html += '<br><span style="font-size:11px;font-weight:500;color:#7D818C;">' + roleLine + '</span>';
+      if (!isYou && missing.length && cs !== 'vacation') {
+        html += '<br><span style="font-size:11px;font-weight:500;color:' + DANGER_COLOR + ';">' +
+          missing.map(function (m) { return m.name + ' (' + roleForPerson(crew, m.id, state.selected) + ')'; }).join(' & ') + ' out \u2014 needs ' + missing.length + '</span>';
+      }
+      html += '</span>';
+      html += '<span class="crew-pill" style="background:' + pillBg + ';color:' + pillColor + ';">' + meta.label + '</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+
+    if (state.vacationPanelOpen) {
+      html += '<div class="crew-card">';
+      html += '<div class="crew-title">' + cardIcon('briefcase') + 'Manage vacations</div>';
+      var todayTs = dateOnlyTs(today);
+      var upcomingVacations = state.vacations.filter(function (v) { return v.end >= todayTs; });
+      var pastVacations = state.vacations.filter(function (v) { return v.end < todayTs; });
+      var vacationsToShow = state.vacationShowPast ? state.vacations.slice().sort(function (a, b) { return b.start - a.start; }) : upcomingVacations;
+      if (vacationsToShow.length === 0) {
+        html += '<div style="font-size:12.5px;color:#7D818C;padding:6px 0 10px;">' + (pastVacations.length && !state.vacationShowPast ? 'No upcoming vacations.' : 'No vacations set.') + '</div>';
+      } else {
+        vacationsToShow.forEach(function (v) {
+          var person = getPerson(v.personId);
+          var s = new Date(v.start), e = new Date(v.end);
+          var fmt = function (d) { return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
+          html += '<div class="crew-row">';
+          html += '<span class="crew-name">' + (person ? person.name : v.personId) + ' <span style="color:#7D818C;font-weight:500;">(' + fmt(s) + '\u2013' + fmt(e) + ')</span></span>';
+          html += '<span style="display:flex;gap:10px;">';
+          html += '<button class="switch-link" data-edit-vacation="' + v.id + '">Edit</button>';
+          html += '<button class="switch-link" data-remove-vacation="' + v.id + '" style="color:' + DANGER_COLOR + ';">Remove</button>';
+          html += '</span>';
+          html += '</div>';
+        });
+      }
+      if (pastVacations.length > 0) {
+        html += '<button class="switch-link" id="toggle-vac-past-btn" style="margin-top:8px;">' +
+          (state.vacationShowPast ? 'Hide past' : 'Show past (' + pastVacations.length + ')') + '</button>';
+      }
+      var editing = state._vacEditingId ? state.vacations.find(function (v) { return v.id === state._vacEditingId; }) : null;
+      html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #1E2027;">';
+      html += '<div style="font-size:12px;color:#9A9EA8;margin-bottom:8px;font-weight:600;">' +
+        (editing ? 'Editing vacation' : 'Who\u2019s taking time off?') + '</div>';
+      CREWS.forEach(function (crew) {
+        html += '<div style="font-size:10.5px;color:#565A64;text-transform:uppercase;letter-spacing:0.05em;margin:8px 0 4px;">' + crew.label + '</div>';
+        html += '<div style="display:flex;gap:6px;margin-bottom:4px;">';
+        crew.members.forEach(function (m) {
+          var picked = state._vacPersonDraft === m.id;
+          html += '<button class="quick-btn" data-vac-person="' + m.id + '" style="' +
+            (picked ? 'border-color:#F5A623;color:#F5F3ED;' : '') + 'flex:1;">' + m.name + '</button>';
+        });
+        html += '</div>';
+      });
+      var startVal = state._vacStartDraft || '';
+      var endVal = state._vacEndDraft || '';
+      html += '<div style="display:flex;gap:6px;align-items:center;margin:10px 0;">';
+      html += '<input type="date" id="vac-start" value="' + escapeAttr(startVal) + '" style="flex:1;background:#0D0E12;border:1px solid #272A33;border-radius:8px;color:#F5F3ED;padding:8px;font-size:13px;">';
+      html += '<span style="color:#565A64;">\u2013</span>';
+      html += '<input type="date" id="vac-end" value="' + escapeAttr(endVal) + '" style="flex:1;background:#0D0E12;border:1px solid #272A33;border-radius:8px;color:#F5F3ED;padding:8px;font-size:13px;">';
+      html += '</div>';
+      html += '<div style="display:flex;gap:8px;">';
+      html += '<button class="quick-btn" id="vac-add-btn" style="flex:1;font-weight:700;">' + (editing ? 'Save changes' : 'Add vacation') + '</button>';
+      if (editing) html += '<button class="quick-btn" id="vac-cancel-edit-btn">Cancel</button>';
+      html += '</div>';
+      html += '</div></div>';
+    }
+
+    // Legend
+    html += '<div class="legend-row">';
+    ['day', 'afternoon', 'off'].forEach(function (k) {
+      html += '<div class="legend-item"><div class="legend-swatch" style="background:' + (k === 'off' ? '#3A3D45' : SHIFT_META[k].color) + ';"></div>';
+      html += '<span class="legend-text">' + SHIFT_META[k].label + '</span>';
+      if (!state.expanded) {
+        var grid2 = buildMonthGrid(state.viewYear, state.viewMonth);
+        var c = 0; grid2.forEach(function (d) { if (d && myEffectiveShift(d) === k) c++; });
+        html += '<span class="legend-count">· ' + c + '</span>';
+      }
+      html += '</div>';
+    });
+    html += '<div class="legend-item"><div class="legend-swatch" style="background:linear-gradient(135deg, #4B4F5A 50%, ' + HOLIDAY_COLOR + ' 50%);"></div><span class="legend-text">Holiday</span></div>';
+    html += '<div class="legend-item"><div class="legend-swatch" style="background:linear-gradient(135deg, #4B4F5A 50%, ' + PAYDAY_COLOR + ' 50%);"></div><span class="legend-text">Payday</span></div>';
+    html += '<div class="legend-item"><div class="legend-swatch" style="background:' + SHIFT_META.vacation.color + ';"></div><span class="legend-text">Vacation</span></div>';
+    html += '<div class="legend-item"><div class="legend-swatch" style="background:linear-gradient(135deg, #4B4F5A 50%, ' + OPENING_COLOR + ' 50%);"></div><span class="legend-text">Opening</span></div>';
+    html += '<div class="legend-item"><div class="legend-swatch" style="background:#15171D;border:1.5px solid #F5F3ED;"></div><span class="legend-text">Has note</span></div>';
+    html += '<div class="legend-item"><div class="legend-swatch" style="background:' + SHIFT_META.midnight.color + ';"></div><span class="legend-text">Picked up shift</span></div>';
+    html += '</div>';
+
+    // ---- Pay & 401k summary (moved to bottom) ----
+    html += '<div class="section-divider"><div class="line"></div><span>Pay & Hours</span><div class="line right"></div></div>';
+    var currentPeriod = periodContaining(state.selected);
+    var periodResult = computePayPeriodHours(currentPeriod.start);
+    var periodPayday = new Date(currentPeriod.end); periodPayday.setDate(periodPayday.getDate() + 5);
+    var fmtMoney = function (n) { return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+
+    // Selected pay period hours
+    var isCurrentPeriod = daysBetween(currentPeriod.start, today) >= 0 && daysBetween(currentPeriod.start, today) <= 13;
+    html += '<div class="crew-card">';
+    html += '<div class="crew-title">' + cardIcon('clock') + (isCurrentPeriod ? 'Current pay period' : 'Pay period') + ' \u2014 ' + fmtShort(currentPeriod.start) + '\u2013' + fmtShort(currentPeriod.end) +
+      ' <span style="color:#565A64;text-transform:none;letter-spacing:0;">(pays ' + fmtShort(periodPayday) + ')</span></div>';
+    html += '<div style="display:flex;gap:10px;margin-top:6px;">';
+    var hourBlocks = [
+      { label: 'Regular', val: periodResult.totals.regular, color: SHIFT_META.day.color },
+      { label: 'Overtime (1.5x)', val: periodResult.totals.overtime, color: DANGER_COLOR },
+      { label: 'Double time (2x)', val: periodResult.totals.doubleTime, color: HOLIDAY_COLOR },
+    ];
+    hourBlocks.forEach(function (b) {
+      html += '<div style="flex:1;background:#101116;border:1px solid #1E2027;border-radius:10px;padding:10px 8px;text-align:center;">';
+      html += '<div style="font-size:20px;font-weight:800;color:' + (b.val > 0 ? b.color : '#4A4D56') + ';">' + b.val + '</div>';
+      html += '<div style="font-size:10px;color:#7D818C;margin-top:2px;">' + b.label + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    var periodTotalHrs = periodResult.totals.regular + periodResult.totals.overtime + periodResult.totals.doubleTime;
+    html += '<div style="font-size:11.5px;color:#565A64;margin-top:10px;">' + periodTotalHrs + ' total hours this period' +
+      (periodResult.totals.overtime === 0 && periodResult.totals.doubleTime === 0 ? ' \u2014 no OT/DT triggered' : '') + '</div>';
+    html += '</div>';
+
+    // Year-to-date hours
+    var ytd = computeYTDHours(state.selected);
+    var ytdTotalHrs = ytd.totals.regular + ytd.totals.overtime + ytd.totals.doubleTime;
+    html += '<div class="crew-card">';
+    html += '<div class="crew-title">' + cardIcon('trendUp') + state.selected.getFullYear() + ' year-to-date hours <span style="color:#565A64;text-transform:none;letter-spacing:0;">(through ' + fmtShort(ytd.through) + ')</span></div>';
+    html += '<div style="display:flex;gap:10px;margin-top:6px;">';
+    var ytdBlocks = [
+      { label: 'Regular', val: ytd.totals.regular, color: SHIFT_META.day.color },
+      { label: 'Overtime', val: ytd.totals.overtime, color: DANGER_COLOR },
+      { label: 'Double time', val: ytd.totals.doubleTime, color: HOLIDAY_COLOR },
+    ];
+    ytdBlocks.forEach(function (b) {
+      html += '<div style="flex:1;background:#101116;border:1px solid #1E2027;border-radius:10px;padding:10px 8px;text-align:center;">';
+      html += '<div style="font-size:18px;font-weight:800;color:' + (b.val > 0 ? b.color : '#4A4D56') + ';">' + b.val + '</div>';
+      html += '<div style="font-size:10px;color:#7D818C;margin-top:2px;">' + b.label + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '<div style="font-size:11.5px;color:#565A64;margin-top:10px;">' + ytdTotalHrs + ' total hours across ' + ytd.periodCount + ' pay periods this year</div>';
+    html += '<div style="font-size:10.5px;color:#565A64;margin-top:6px;">Based on your base rotation plus anything logged in "Picked up a shift." Won\u2019t match your real stub\u2019s YTD for periods before you started logging pickups here.</div>';
+    html += '</div>';
+
+    // Estimated gross pay
+    var gross = computeGrossPay(periodResult.totals, currentPeriod.start);
+    html += '<div class="crew-card">';
+    html += '<div class="crew-title">' + cardIcon('dollar') + 'Estimated gross pay \u2014 $' + gross.baseRate.toFixed(2) + '/hr base</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;font-size:13px;">';
+    var payRows = [
+      ['Regular (' + periodResult.totals.regular + ' hrs \u00d7 $' + gross.baseRate.toFixed(2) + ')', gross.regularPay],
+      ['Overtime (' + periodResult.totals.overtime + ' hrs \u00d7 $' + gross.otRate.toFixed(3) + ')', gross.otPay],
+      ['Double time (' + periodResult.totals.doubleTime + ' hrs \u00d7 $' + gross.dtRate.toFixed(2) + ')', gross.dtPay],
+      ['Sunday premium (' + periodResult.totals.sundayHours + ' hrs \u00d7 $' + SUNDAY_PREMIUM_RATE.toFixed(2) + ')', gross.sundayPay],
+    ];
+    payRows.forEach(function (row) {
+      if (row[1] === 0) return;
+      html += '<div style="display:flex;justify-content:space-between;color:#9A9EA8;"><span>' + row[0] + '</span><span>' + fmtMoney(row[1]) + '</span></div>';
+    });
+    html += '</div>';
+    html += '<div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid #1E2027;font-weight:800;font-size:17px;color:#F5F3ED;">';
+    html += '<span>Estimated gross</span><span>' + fmtMoney(gross.total) + '</span></div>';
+    html += '<div style="font-size:10.5px;color:#565A64;margin-top:8px;">Base/OT/DT + Sunday premium only \u2014 doesn\u2019t include shift differentials, meal allowance, holiday pay, bonuses, or call-in pay, so your real gross will run higher.</div>';
+    html += '</div>';
+
+    // Take-home pay + 401k
+    var take = computeTakeHome(gross.total);
+    html += '<div class="crew-card">';
+    html += '<div class="crew-title">' + cardIcon('dollar') + 'Estimated take-home pay & 401k</div>';
+
+    html += '<div style="font-size:11px;color:#7D818C;font-weight:700;margin:4px 0 6px;">401K CONTRIBUTIONS</div>';
+    html += '<div style="display:flex;gap:8px;margin-bottom:10px;">';
+    html += '<div style="flex:1;background:#101116;border:1px solid #1E2027;border-radius:10px;padding:10px 6px;text-align:center;">' +
+      '<div style="font-size:16px;font-weight:800;color:#F5F3ED;">' + fmtMoney(take.k401Traditional) + '</div>' +
+      '<div style="font-size:9.5px;color:#7D818C;margin-top:2px;">Traditional</div></div>';
+    html += '<div style="flex:1;background:#101116;border:1px solid #1E2027;border-radius:10px;padding:10px 6px;text-align:center;">' +
+      '<div style="font-size:16px;font-weight:800;color:' + SHIFT_META.midnight.color + ';">' + fmtMoney(take.k401Roth) + '</div>' +
+      '<div style="font-size:9.5px;color:#7D818C;margin-top:2px;">Roth</div></div>';
+    html += '<div style="flex:1;background:#101116;border:1px solid #1E2027;border-radius:10px;padding:10px 6px;text-align:center;">' +
+      '<div style="font-size:16px;font-weight:800;color:' + PAYDAY_COLOR + ';">' + fmtMoney(take.k401Employer) + '</div>' +
+      '<div style="font-size:9.5px;color:#7D818C;margin-top:2px;">Employer match</div></div>';
+    html += '</div>';
+    if (take.k401Roth > 0) {
+      html += '<div style="font-size:10.5px;color:#565A64;margin-bottom:10px;">Total employee deferral (Traditional + Roth): ' +
+        fmtMoney(take.k401Traditional + take.k401Roth) + '/period \u2014 counts toward the same $24,500 (2026) limit.</div>';
+    }
+
+    html += '<div style="font-size:11px;color:#7D818C;font-weight:700;margin:10px 0 6px;">DEDUCTIONS</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:5px;font-size:12.5px;">';
+    var dedRows = [
+      ['401k \u2014 Traditional', take.k401Traditional],
+      ['401k \u2014 Roth', take.k401Roth],
+      ['Dental + Medical + HSA', take.flatPreTax],
+      ['OASDI (6.2%)', take.oasdi],
+      ['Medicare (1.45%)', take.medicare],
+      ['Federal withholding (est.)', take.fed],
+      ['State tax \u2014 OH (est.)', take.state],
+      ['Union dues', take.flatPostTax],
+    ];
+    dedRows.forEach(function (row) {
+      if (row[1] === 0) return;
+      html += '<div style="display:flex;justify-content:space-between;color:#9A9EA8;"><span>' + row[0] + '</span><span>-' + fmtMoney(row[1]) + '</span></div>';
+    });
+    html += '</div>';
+
+    html += '<div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid #1E2027;font-weight:800;font-size:19px;color:' + PAYDAY_COLOR + ';">';
+    html += '<span>Estimated take-home</span><span>' + fmtMoney(take.net) + '</span></div>';
+    html += '<div style="font-size:10.5px;color:#565A64;margin-top:8px;">Calibrated from 7 of your actual pay stubs across a wide range of gross pay. OASDI/Medicare are exact; federal/state withholding use a fitted model (not real IRS tables) so they\u2019ll still drift a bit, especially on unusually light or heavy OT periods. Union dues average ~$30/period since it doesn\u2019t charge every check.</div>';
+    html += '</div>';
+
+    // Pay deduction settings (editable)
+    var ps = state.paySettings;
+    html += '<div class="crew-card">';
+    html += '<div class="crew-title" style="display:flex;align-items:center;justify-content:space-between;"><span>' + cardIcon('tag') + 'Pay deduction settings</span><button class="switch-link" id="pay-settings-btn">' + (state.paySettingsPanelOpen ? 'Close' : 'Edit') + '</button></div>';
+    html += '<div style="display:flex;flex-direction:column;gap:5px;">';
+    var settingsRows = [
+      ['401k \u2014 Traditional', (ps.k401EmployeeRate * 100).toFixed(2) + '%'],
+      ['401k \u2014 Roth', ((ps.rothK401Rate || 0) * 100).toFixed(2) + '%'],
+      ['HSA (per period)', '$' + ps.hsa.toFixed(2)],
+      ['Dental (per period)', '$' + ps.dental.toFixed(2)],
+      ['Medical (per period)', '$' + ps.medical.toFixed(2)],
+      ['Union dues (avg/period)', '$' + ps.unionAvg.toFixed(2)],
+    ];
+    settingsRows.forEach(function (row) {
+      html += '<div class="crew-row"><span class="crew-name">' + row[0] + '</span><span class="crew-name you">' + row[1] + '</span></div>';
+    });
+    html += '</div>';
+    if (state.paySettingsPanelOpen) {
+      html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #1E2027;display:flex;flex-direction:column;gap:8px;">';
+      var fieldRow = function (label, id, value, step) {
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">' +
+          '<span style="font-size:12.5px;color:#9A9EA8;">' + label + '</span>' +
+          '<input type="number" step="' + step + '" id="' + id + '" value="' + value + '" style="width:100px;background:#0D0E12;border:1px solid #272A33;border-radius:8px;color:#F5F3ED;padding:7px 8px;font-size:13px;text-align:right;">' +
+          '</div>';
+      };
+      html += fieldRow('401k Traditional %', 'ps-k401', (ps.k401EmployeeRate * 100).toFixed(2), '0.01');
+      html += fieldRow('401k Roth %', 'ps-k401-roth', ((ps.rothK401Rate || 0) * 100).toFixed(2), '0.01');
+      html += '<div style="font-size:10.5px;color:#565A64;">Traditional + Roth combined count toward the same $24,500 (2026) IRS employee limit.</div>';
+      html += fieldRow('HSA $/period', 'ps-hsa', ps.hsa.toFixed(2), '0.01');
+      html += fieldRow('Dental $/period', 'ps-dental', ps.dental.toFixed(2), '0.01');
+      html += fieldRow('Medical $/period', 'ps-medical', ps.medical.toFixed(2), '0.01');
+      html += fieldRow('Union avg $/period', 'ps-union', ps.unionAvg.toFixed(2), '0.01');
+      html += '<button class="quick-btn" id="pay-settings-save-btn" style="width:100%;font-weight:700;margin-top:4px;">Save</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // Pay rate history
+    html += '<div class="crew-card">';
+    html += '<div class="crew-title" style="display:flex;align-items:center;justify-content:space-between;"><span>' + cardIcon('tag') + 'Pay rate history</span><button class="switch-link" id="rates-btn">' + (state.ratePanelOpen ? 'Close' : 'Edit') + '</button></div>';
+    var sortedRates = sortedRateHistory();
+    html += '<div style="display:flex;flex-direction:column;gap:5px;margin-top:4px;">';
+    sortedRates.forEach(function (r, i) {
+      var isLast = i === sortedRates.length - 1;
+      var effDate = new Date(r.effective);
+      html += '<div class="crew-row">';
+      html += '<span class="crew-name' + (isLast ? ' you' : '') + '">$' + r.rate.toFixed(2) + '/hr' + (isLast ? ' (current)' : '') +
+        ' <span style="color:#7D818C;font-weight:500;">since ' + fmtShort(effDate) + '</span></span>';
+      if (state.ratePanelOpen && sortedRates.length > 1) {
+        html += '<button class="switch-link" data-remove-rate="' + r.id + '" style="color:' + DANGER_COLOR + ';">Remove</button>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+    if (state.ratePanelOpen) {
+      html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #1E2027;">';
+      html += '<div style="font-size:12px;color:#9A9EA8;margin-bottom:8px;font-weight:600;">Add a rate change (e.g. a raise)</div>';
+      html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;">';
+      html += '<input type="date" id="rate-eff-date" style="flex:1;background:#0D0E12;border:1px solid #272A33;border-radius:8px;color:#F5F3ED;padding:8px;font-size:13px;">';
+      html += '<input type="number" step="0.01" id="rate-value" placeholder="$/hr" style="width:90px;background:#0D0E12;border:1px solid #272A33;border-radius:8px;color:#F5F3ED;padding:8px;font-size:13px;">';
+      html += '</div>';
+      html += '<button class="quick-btn" id="rate-add-btn" style="width:100%;font-weight:700;">Save rate change</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    html += '</div>'; // .wrap
+
+    root.innerHTML = html;
+  }
+
+  function goMonth(delta) {
+    var m = state.viewMonth + delta, y = state.viewYear;
+    if (m < 0) { m = 11; y -= 1; }
+    if (m > 11) { m = 0; y += 1; }
+    state.viewMonth = m; state.viewYear = y;
+  }
+
+  function jumpYear(y) {
+    state.viewYear = y;
+    state.yearPickerOpen = false;
+  }
+
+  // ---- Event delegation (attached once; survives re-renders since #root persists) ----
+  document.getElementById('root').addEventListener('click', function (e) {
+    var t = e.target;
+    var el;
+
+    if ((el = t.closest('#export-data-btn'))) {
+      try {
+        var blob = new Blob([JSON.stringify(allAppData(), null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'shift-calendar-backup-' + dateKey(today).replace(/,/g, '-') + '.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+      } catch (err) {}
+      return;
+    }
+    if ((el = t.closest('#import-data-btn'))) {
+      var fileInput = document.getElementById('import-file-input');
+      if (fileInput) fileInput.click();
+      return;
+    }
+    if ((el = t.closest('#pay-settings-btn'))) {
+      state.paySettingsPanelOpen = !state.paySettingsPanelOpen;
+      render(); return;
+    }
+    if ((el = t.closest('#pay-settings-save-btn'))) {
+      var g = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
+      updatePaySettings({
+        k401: g('ps-k401'), k401Roth: g('ps-k401-roth'), hsa: g('ps-hsa'), dental: g('ps-dental'),
+        medical: g('ps-medical'), union: g('ps-union'),
+      });
+      state.paySettingsPanelOpen = false;
+      render(); return;
+    }
+    if ((el = t.closest('#rates-btn'))) {
+      state.ratePanelOpen = !state.ratePanelOpen;
+      render(); return;
+    }
+    if ((el = t.closest('#rate-add-btn'))) {
+      var effEl = document.getElementById('rate-eff-date');
+      var valEl = document.getElementById('rate-value');
+      var added = addRateChange(effEl ? effEl.value : '', valEl ? valEl.value : '');
+      if (added) render();
+      return;
+    }
+    if ((el = t.closest('[data-remove-rate]'))) {
+      removeRateChange(el.getAttribute('data-remove-rate'));
+      render(); return;
+    }
+    if ((el = t.closest('#vacations-btn'))) {
+      state.vacationPanelOpen = !state.vacationPanelOpen;
+      render(); return;
+    }
+    if ((el = t.closest('[data-vac-person]'))) {
+      state._vacPersonDraft = el.getAttribute('data-vac-person');
+      render(); return;
+    }
+    if ((el = t.closest('#vac-add-btn'))) {
+      var startEl = document.getElementById('vac-start');
+      var endEl = document.getElementById('vac-end');
+      var personId = state._vacPersonDraft;
+      var sVal = startEl ? startEl.value : '';
+      var eVal = endEl ? endEl.value : '';
+      var ok;
+      if (state._vacEditingId) {
+        ok = personId ? updateVacation(state._vacEditingId, personId, sVal, eVal) : false;
+      } else {
+        ok = personId ? addVacation(personId, sVal, eVal) : false;
+      }
+      if (ok) {
+        state._vacPersonDraft = null; state._vacStartDraft = null; state._vacEndDraft = null; state._vacEditingId = null;
+        render();
+      }
+      return;
+    }
+    if ((el = t.closest('#vac-cancel-edit-btn'))) {
+      state._vacEditingId = null; state._vacPersonDraft = null; state._vacStartDraft = null; state._vacEndDraft = null;
+      render(); return;
+    }
+    if ((el = t.closest('[data-edit-vacation]'))) {
+      var editId = el.getAttribute('data-edit-vacation');
+      var v = state.vacations.find(function (v) { return v.id === editId; });
+      if (v) {
+        state._vacEditingId = editId;
+        state._vacPersonDraft = v.personId;
+        state._vacStartDraft = toInputDateStr(new Date(v.start));
+        state._vacEndDraft = toInputDateStr(new Date(v.end));
+        render();
+      }
+      return;
+    }
+    if ((el = t.closest('[data-remove-vacation]'))) {
+      removeVacation(el.getAttribute('data-remove-vacation'));
+      if (state._vacEditingId === el.getAttribute('data-remove-vacation')) {
+        state._vacEditingId = null; state._vacPersonDraft = null; state._vacStartDraft = null; state._vacEndDraft = null;
+      }
+      render(); return;
+    }
+    if ((el = t.closest('[data-toggle-pickup]'))) {
+      togglePickup(state.selected, el.getAttribute('data-toggle-pickup'));
+      render(); return;
+    }
+    if ((el = t.closest('#toggle-vac-past-btn'))) {
+      state.vacationShowPast = !state.vacationShowPast;
+      render(); return;
+    }
+    if ((el = t.closest('#toggle-trade-past-btn'))) {
+      state.tradeShowPast = !state.tradeShowPast;
+      render(); return;
+    }
+    if ((el = t.closest('#trades-btn'))) {
+      state.tradePanelOpen = !state.tradePanelOpen;
+      render(); return;
+    }
+    if ((el = t.closest('[data-trade-shift]'))) {
+      state._tradeShiftDraft = el.getAttribute('data-trade-shift');
+      render(); return;
+    }
+    if ((el = t.closest('#trade-save-btn'))) {
+      var nameEl = document.getElementById('trade-name');
+      var giveEl = document.getElementById('trade-give-date');
+      var pickupEl = document.getElementById('trade-pickup-date');
+      var shiftType = state._tradeShiftDraft || PICKUP_TYPES[0];
+      var tradeOk = addTrade(nameEl ? nameEl.value : '', giveEl ? giveEl.value : '', pickupEl ? pickupEl.value : '', shiftType);
+      if (tradeOk) { state.tradePanelOpen = false; state._tradeShiftDraft = null; render(); }
+      return;
+    }
+    if ((el = t.closest('[data-remove-trade]'))) {
+      removeTrade(el.getAttribute('data-remove-trade'));
+      render(); return;
+    }
+    if ((el = t.closest('#note-save-btn'))) {
+      var noteEl = document.getElementById('note-input');
+      setNote(state.selected, noteEl ? noteEl.value : '');
+      render(); return;
+    }
+    if ((el = t.closest('#note-clear-btn'))) {
+      setNote(state.selected, '');
+      render(); return;
+    }
+
+    if ((el = t.closest('#nav-prev'))) {
+      state.expanded ? jumpYear(state.viewYear - 1) : goMonth(-1);
+      render(); return;
+    }
+    if ((el = t.closest('#nav-next'))) {
+      state.expanded ? jumpYear(state.viewYear + 1) : goMonth(1);
+      render(); return;
+    }
+    if ((el = t.closest('#nav-today'))) {
+      state.viewYear = today.getFullYear(); state.viewMonth = today.getMonth(); state.selected = today;
+      render(); return;
+    }
+    if ((el = t.closest('#nav-expand'))) {
+      state.expanded = !state.expanded;
+      render(); return;
+    }
+    if ((el = t.closest('#year-toggle-btn'))) {
+      state.yearPickerOpen = !state.yearPickerOpen;
+      render(); return;
+    }
+    if ((el = t.closest('#year-step-up'))) {
+      var inp = document.getElementById('year-input');
+      inp.value = (parseInt(inp.value, 10) || state.viewYear) + 1;
+      return;
+    }
+    if ((el = t.closest('#year-step-down'))) {
+      var inp2 = document.getElementById('year-input');
+      inp2.value = (parseInt(inp2.value, 10) || state.viewYear) - 1;
+      return;
+    }
+    if ((el = t.closest('[data-year-off]'))) {
+      var inp3 = document.getElementById('year-input');
+      var base = parseInt(inp3.value, 10) || state.viewYear;
+      jumpYear(base + parseInt(el.getAttribute('data-year-off'), 10));
+      render(); return;
+    }
+    if ((el = t.closest('#year-this-year'))) {
+      jumpYear(today.getFullYear());
+      render(); return;
+    }
+    if ((el = t.closest('.day-btn'))) {
+      state.selected = new Date(parseInt(el.getAttribute('data-ts'), 10));
+      render(); return;
+    }
+    if ((el = t.closest('.mini-btn'))) {
+      var d = new Date(parseInt(el.getAttribute('data-ts'), 10));
+      state.selected = d;
+      state.viewMonth = d.getMonth();
+      state.viewYear = d.getFullYear();
+      state.expanded = false;
+      render(); return;
+    }
+  });
+
+  // Commit year input on Enter
+  document.getElementById('root').addEventListener('keydown', function (e) {
+    if (e.target && e.target.id === 'year-input' && e.key === 'Enter') {
+      var y = parseInt(e.target.value, 10);
+      if (!isNaN(y) && y > 0) jumpYear(y);
+      render();
+    }
+  });
+
+  // Keep vacation date drafts in sync so they survive re-renders (e.g. switching person)
+  document.getElementById('root').addEventListener('change', function (e) {
+    if (e.target && e.target.id === 'vac-start') state._vacStartDraft = e.target.value;
+    if (e.target && e.target.id === 'vac-end') state._vacEndDraft = e.target.value;
+    if (e.target && e.target.id === 'import-file-input' && e.target.files && e.target.files[0]) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var data = JSON.parse(reader.result);
+          if (importAppData(data)) render();
+          else alert('That file doesn\u2019t look like a valid backup.');
+        } catch (err) {
+          alert('Couldn\u2019t read that file \u2014 make sure it\u2019s a backup exported from this calendar.');
+        }
+      };
+      reader.readAsText(e.target.files[0]);
+      e.target.value = '';
+    }
+  });
+
+  // Commit year input on blur (unless blurring to a stepper/quick button, handled by their own click already firing first)
+  document.getElementById('root').addEventListener('focusout', function (e) {
+    if (e.target && e.target.id === 'year-input') {
+      setTimeout(function () {
+        if (!state.yearPickerOpen) return; // already handled by a button click
+        var input = document.getElementById('year-input');
+        if (!input) return;
+        var y = parseInt(input.value, 10);
+        if (!isNaN(y) && y > 0 && y !== state.viewYear) { jumpYear(y); render(); }
+      }, 120);
+    }
+  });
+
+  // Close popover when clicking outside it
+  document.addEventListener('click', function (e) {
+    if (!state.yearPickerOpen) return;
+    var path = e.composedPath ? e.composedPath() : [];
+    var insideWrap = path.some(function (el) { return el && el.id === 'year-wrap'; });
+    if (!insideWrap) {
+      state.yearPickerOpen = false;
+      render();
+    }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
