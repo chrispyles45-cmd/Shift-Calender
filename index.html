@@ -287,30 +287,51 @@
 
     var totals = { regular: 0, overtime: 0, doubleTime: 0, sundayHours: 0 };
     var days = [];
+    var myCrewObjForPay = getCrew(state.myCrew);
 
     weeks.forEach(function (week) {
       var workedOrdinal = 0;
       week.forEach(function (date) {
-        var shift = myEffectiveShift(date);
-        var scheduledWorked = (shift === 'day' || shift === 'afternoon') && !isTradedAway(date);
+        // Raw rotation shift, ignoring vacation/trades \u2014 this is what determines whether the
+        // day counts toward your weekly worked-day tally (a traded-away day still counts, since
+        // it was still "your" scheduled day \u2014 you just had someone else physically cover it).
+        var rawShift = myCrewObjForPay ? getShiftForCrew(myCrewObjForPay, date) : 'off';
+        var rawScheduledDayOrAfternoon = rawShift === 'day' || rawShift === 'afternoon';
+        var isVac = isPersonOnVacation(MY_PERSON_ID, date);
+        var isTraded = isTradedAway(date);
         var pickups = getPickups(date);
-        var worked = scheduledWorked || pickups.length > 0;
-        var entry = {
-          date: date, worked: worked, shift: shift, pickups: pickups,
-          regular: 0, overtime: 0, doubleTime: 0, hours: 0,
-        };
-        if (worked) {
-          workedOrdinal++;
-          var extraPickups = pickups.filter(function (t) { return t !== shift; });
-          var hrs = (scheduledWorked ? SHIFT_HOURS : 0) + extraPickups.length * SHIFT_HOURS;
-          entry.hours = hrs;
-          var isHol = isHolidayDate(date);
 
+        // Counts toward the weekly 6th/7th-day tally: your normal rotation day (unless you're on
+        // vacation \u2014 vacation genuinely removes you from the tally, unlike a trade), or any day
+        // you picked up a shift on.
+        var countsForOrdinal = (rawScheduledDayOrAfternoon && !isVac) || pickups.length > 0;
+
+        // Actual hours paid: only for shifts you really worked (not vacation, not traded away),
+        // plus any pickups that aren't just a redundant duplicate of that scheduled shift.
+        var scheduledWorkedForHours = rawScheduledDayOrAfternoon && !isVac && !isTraded;
+        var effectiveBaseType = scheduledWorkedForHours ? rawShift : null;
+        var extraPickups = pickups.filter(function (p) { return p.type !== effectiveBaseType; });
+        var hrs = (scheduledWorkedForHours ? SHIFT_HOURS : 0) + extraPickups.length * SHIFT_HOURS;
+        var isTradeDay = pickups.some(function (p) { return p.fromTrade; });
+
+        var displayShift = isVac ? 'vacation' : (scheduledWorkedForHours ? rawShift : (pickups.length ? pickups[0].type : 'off'));
+        var entry = {
+          date: date, worked: countsForOrdinal, shift: displayShift, pickups: pickups,
+          regular: 0, overtime: 0, doubleTime: 0, hours: hrs,
+        };
+
+        if (countsForOrdinal) {
+          workedOrdinal++;
+          var isHol = isHolidayDate(date);
           if (workedOrdinal === 7) {
             entry.doubleTime = hrs;
           } else if (workedOrdinal === 6 || isHol) {
             entry.overtime = hrs;
+          } else if (isTradeDay) {
+            // Trade-driven double: not treated as "working over 8 hrs" \u2014 it's a swap, not extra hours.
+            entry.regular = hrs;
           } else {
+            // No trade involved: hours beyond 8 on this day are daily overtime.
             entry.regular = Math.min(hrs, 8);
             entry.overtime = Math.max(0, hrs - 8);
           }
@@ -639,8 +660,20 @@
 
   function myEffectiveShift(date) {
     var dayPickups = getPickups(date);
-    if (dayPickups.length) return dayPickups[0]; // show the picked-up shift's color
+    if (dayPickups.length) return dayPickups[0].type; // show the picked-up shift's color
     if (isPersonOnVacation(MY_PERSON_ID, date)) return 'vacation'; // your own vacation, regardless of your partner's status
+    if (isTradedAway(date)) return 'off';
+    var c = getCrew(state.myCrew);
+    return c ? effectiveShiftForCrew(c, date) : myShift(date);
+  }
+
+  // For PAY CALCULATIONS only: your true scheduled shift, accounting for vacation/trades but
+  // NOT pickups (pickups are added as separate extra hours in computePayPeriodHours instead).
+  // Kept deliberately separate from myEffectiveShift, which is for the calendar's display color
+  // and intentionally shows the pickup's color \u2014 reusing that for pay math caused pickups to
+  // silently replace the scheduled shift instead of adding to it.
+  function myScheduledShiftForPay(date) {
+    if (isPersonOnVacation(MY_PERSON_ID, date)) return 'vacation';
     if (isTradedAway(date)) return 'off';
     var c = getCrew(state.myCrew);
     return c ? effectiveShiftForCrew(c, date) : myShift(date);
@@ -655,7 +688,7 @@
       var raw = c ? getShiftForCrew(c, date) : 'off';
       if (raw === 'day' || raw === 'afternoon') types.push(raw);
     }
-    getPickups(date).forEach(function (t) { if (types.indexOf(t) === -1) types.push(t); });
+    getPickups(date).forEach(function (p) { if (types.indexOf(p.type) === -1) types.push(p.type); });
     return types;
   }
   // Returns array of { shift: 'day'|'afternoon', crew, missing: [members], needed: 1 or 2 }
@@ -721,10 +754,20 @@
   }
 
   // ---- Picked-up shifts (extra shifts beyond your normal rotation) ----
+  // Each pickup is { type: 'day'|'afternoon'|'midnight', fromTrade: bool, tradeId? } so pay
+  // calculations can tell a trade-driven double (exempt from the daily >8hr rule) apart from a
+  // standalone pickup (which still triggers daily overtime if it pushes you over 8 hrs that day).
   function loadPickups() {
     try {
       var raw = localStorage.getItem('shiftcal_pickups');
-      return raw ? JSON.parse(raw) : {};
+      var parsed = raw ? JSON.parse(raw) : {};
+      // normalize legacy plain-string entries from before origin tracking existed
+      Object.keys(parsed).forEach(function (k) {
+        parsed[k] = parsed[k].map(function (p) {
+          return typeof p === 'string' ? { type: p, fromTrade: false } : p;
+        });
+      });
+      return parsed;
     } catch (e) { return {}; }
   }
   function savePickups() {
@@ -734,9 +777,10 @@
   function togglePickup(date, type) {
     var key = dateKey(date);
     var list = state.pickups[key] || [];
-    var idx = list.indexOf(type);
-    if (idx === -1) list = list.concat([type]);
-    else list = list.filter(function (t) { return t !== type; });
+    if (list.some(function (p) { return p.type === type && p.fromTrade; })) return; // managed via Shift Trades instead
+    var idx = list.findIndex(function (p) { return p.type === type && !p.fromTrade; });
+    if (idx === -1) list = list.concat([{ type: type, fromTrade: false }]);
+    else list = list.filter(function (p, i) { return i !== idx; });
     if (list.length) state.pickups[key] = list;
     else delete state.pickups[key];
     savePickups();
@@ -854,7 +898,9 @@
 
     var pKey = dateKeyFromInputStr(pickupStr);
     var list = state.pickups[pKey] || [];
-    if (list.indexOf(pickupShift) === -1) list = list.concat([pickupShift]);
+    if (!list.some(function (p) { return p.type === pickupShift && p.tradeId === id; })) {
+      list = list.concat([{ type: pickupShift, fromTrade: true, tradeId: id }]);
+    }
     state.pickups[pKey] = list;
 
     saveTrades(); saveTradedAway(); savePickups();
@@ -869,7 +915,7 @@
     if (state.tradedAway[gKey] === id) delete state.tradedAway[gKey];
 
     var pKey = dateKeyFromInputStr(t.pickup);
-    var list = (state.pickups[pKey] || []).filter(function (s) { return s !== t.pickupShift; });
+    var list = (state.pickups[pKey] || []).filter(function (p) { return p.tradeId !== id; });
     if (list.length) state.pickups[pKey] = list; else delete state.pickups[pKey];
 
     saveTrades(); saveTradedAway(); savePickups();
@@ -1092,14 +1138,18 @@
     html += '<div style="font-size:11px;color:#9A9EA8;font-weight:600;margin-bottom:6px;">Picked up a shift?</div>';
     html += '<div style="display:flex;gap:6px;">';
     PICKUP_TYPES.forEach(function (type) {
-      var active = selPickups.indexOf(type) !== -1;
+      var active = selPickups.some(function (p) { return p.type === type; });
       html += '<button class="quick-btn" data-toggle-pickup="' + type + '" style="flex:1;' +
         (active ? 'border-color:' + SHIFT_META[type].color + ';color:#F5F3ED;background:' + SHIFT_META[type].color + '22;' : '') +
         '">' + (type === 'day' ? 'Day' : type === 'afternoon' ? 'Afternoon' : 'Midnight') + '</button>';
     });
     html += '</div>';
+    var selTradePickups = selPickups.filter(function (p) { return p.fromTrade; });
+    if (selTradePickups.length) {
+      html += '<div style="font-size:11px;color:#7D818C;margin-top:6px;">From a trade \u2014 manage it in Shift Trades below instead.</div>';
+    }
     var selScheduledShift = myEffectiveShift(state.selected);
-    var selExtraPickups = selPickups.filter(function (t) { return t !== selScheduledShift; });
+    var selExtraPickups = selPickups.filter(function (p) { return p.type !== selScheduledShift; });
     if (selPickups.length) {
       var selDuplicate = selPickups.length - selExtraPickups.length;
       html += '<div style="font-size:11.5px;color:#7D818C;margin-top:8px;">+' + (selExtraPickups.length * SHIFT_HOURS) +
