@@ -285,11 +285,18 @@
       weeks[Math.floor(i / 7)].push(d);
     }
 
-    var totals = { regular: 0, overtime: 0, doubleTime: 0, sundayHours: 0 };
+    var totals = { regular: 0, overtime: 0, doubleTime: 0, sundayHours: 0, vacationHours: 0 };
     var days = [];
     var myCrewObjForPay = getCrew(state.myCrew);
 
     weeks.forEach(function (week) {
+      // Flat 40 hrs of vacation pay for any week that includes a vacation day \u2014 confirmed
+      // from your real stubs (40 hrs \u00d7 $42.09 = $1,683.60 showed up exactly this way).
+      // This is separate from worked hours/ordinal \u2014 vacation days still contribute 0 toward
+      // the 6th/7th-day tally and 0 actual worked hours, same as before.
+      var weekHasVacation = week.some(function (d) { return isPersonOnVacation(MY_PERSON_ID, d); });
+      if (weekHasVacation) totals.vacationHours += 40;
+
       var workedOrdinal = 0;
       week.forEach(function (date) {
         // Raw rotation shift, ignoring vacation/trades \u2014 this is what determines whether the
@@ -351,7 +358,7 @@
     var year = uptoDate.getFullYear();
     var firstPeriod = periodContaining(new Date(year, 0, 1));
     var targetPeriod = periodContaining(uptoDate);
-    var totals = { regular: 0, overtime: 0, doubleTime: 0 };
+    var totals = { regular: 0, overtime: 0, doubleTime: 0, vacationHours: 0 };
     var periodCount = 0;
     var cursor = new Date(firstPeriod.start);
     while (cursor.getTime() <= targetPeriod.start.getTime()) {
@@ -359,6 +366,7 @@
       totals.regular += r.totals.regular;
       totals.overtime += r.totals.overtime;
       totals.doubleTime += r.totals.doubleTime;
+      totals.vacationHours += r.totals.vacationHours || 0;
       periodCount++;
       cursor.setDate(cursor.getDate() + 14);
     }
@@ -373,10 +381,11 @@
     var otPay = totals.overtime * otRate;
     var dtPay = totals.doubleTime * dtRate;
     var sundayPay = totals.sundayHours * SUNDAY_PREMIUM_RATE;
+    var vacationPay = (totals.vacationHours || 0) * baseRate;
     return {
       baseRate: baseRate, otRate: otRate, dtRate: dtRate,
-      regularPay: regularPay, otPay: otPay, dtPay: dtPay, sundayPay: sundayPay,
-      total: regularPay + otPay + dtPay + sundayPay,
+      regularPay: regularPay, otPay: otPay, dtPay: dtPay, sundayPay: sundayPay, vacationPay: vacationPay,
+      total: regularPay + otPay + dtPay + sundayPay + vacationPay,
     };
   }
 
@@ -1349,6 +1358,9 @@
       { label: 'Overtime (1.5x)', val: periodResult.totals.overtime, color: DANGER_COLOR },
       { label: 'Double time (2x)', val: periodResult.totals.doubleTime, color: HOLIDAY_COLOR },
     ];
+    if (periodResult.totals.vacationHours > 0) {
+      hourBlocks.push({ label: 'Vacation', val: periodResult.totals.vacationHours, color: SHIFT_META.vacation.color });
+    }
     hourBlocks.forEach(function (b) {
       html += '<div style="flex:1;background:#101116;border:1px solid #1E2027;border-radius:10px;padding:10px 8px;text-align:center;">';
       html += '<div style="font-size:20px;font-weight:800;color:' + (b.val > 0 ? b.color : '#4A4D56') + ';">' + b.val + '</div>';
@@ -1356,14 +1368,14 @@
       html += '</div>';
     });
     html += '</div>';
-    var periodTotalHrs = periodResult.totals.regular + periodResult.totals.overtime + periodResult.totals.doubleTime;
+    var periodTotalHrs = periodResult.totals.regular + periodResult.totals.overtime + periodResult.totals.doubleTime + periodResult.totals.vacationHours;
     html += '<div style="font-size:11.5px;color:#565A64;margin-top:10px;">' + periodTotalHrs + ' total hours this period' +
       (periodResult.totals.overtime === 0 && periodResult.totals.doubleTime === 0 ? ' \u2014 no OT/DT triggered' : '') + '</div>';
     html += '</div>';
 
     // Year-to-date hours
     var ytd = computeYTDHours(state.selected);
-    var ytdTotalHrs = ytd.totals.regular + ytd.totals.overtime + ytd.totals.doubleTime;
+    var ytdTotalHrs = ytd.totals.regular + ytd.totals.overtime + ytd.totals.doubleTime + ytd.totals.vacationHours;
     html += '<div class="crew-card">';
     html += '<div class="crew-title">' + cardIcon('trendUp') + state.selected.getFullYear() + ' year-to-date hours <span style="color:#565A64;text-transform:none;letter-spacing:0;">(through ' + fmtShort(ytd.through) + ')</span></div>';
     html += '<div style="display:flex;gap:10px;margin-top:6px;">';
@@ -1372,6 +1384,9 @@
       { label: 'Overtime', val: ytd.totals.overtime, color: DANGER_COLOR },
       { label: 'Double time', val: ytd.totals.doubleTime, color: HOLIDAY_COLOR },
     ];
+    if (ytd.totals.vacationHours > 0) {
+      ytdBlocks.push({ label: 'Vacation', val: ytd.totals.vacationHours, color: SHIFT_META.vacation.color });
+    }
     ytdBlocks.forEach(function (b) {
       html += '<div style="flex:1;background:#101116;border:1px solid #1E2027;border-radius:10px;padding:10px 8px;text-align:center;">';
       html += '<div style="font-size:18px;font-weight:800;color:' + (b.val > 0 ? b.color : '#4A4D56') + ';">' + b.val + '</div>';
@@ -1392,6 +1407,7 @@
       ['Regular (' + periodResult.totals.regular + ' hrs \u00d7 $' + gross.baseRate.toFixed(2) + ')', gross.regularPay],
       ['Overtime (' + periodResult.totals.overtime + ' hrs \u00d7 $' + gross.otRate.toFixed(3) + ')', gross.otPay],
       ['Double time (' + periodResult.totals.doubleTime + ' hrs \u00d7 $' + gross.dtRate.toFixed(2) + ')', gross.dtPay],
+      ['Vacation (' + (periodResult.totals.vacationHours || 0) + ' hrs \u00d7 $' + gross.baseRate.toFixed(2) + ')', gross.vacationPay],
       ['Sunday premium (' + periodResult.totals.sundayHours + ' hrs \u00d7 $' + SUNDAY_PREMIUM_RATE.toFixed(2) + ')', gross.sundayPay],
     ];
     payRows.forEach(function (row) {
