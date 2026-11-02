@@ -319,7 +319,7 @@
         var effectiveBaseType = scheduledWorkedForHours ? rawShift : null;
         var extraPickups = pickups.filter(function (p) { return p.type !== effectiveBaseType; });
         var hrs = (scheduledWorkedForHours ? SHIFT_HOURS : 0) + extraPickups.length * SHIFT_HOURS;
-        var isTradeDay = pickups.some(function (p) { return p.fromTrade; });
+        var isTradeDay = pickups.some(function (p) { return p.fromTrade; }) || isTradePickupDate(date);
 
         var displayShift = isVac ? 'vacation' : (scheduledWorkedForHours ? rawShift : (pickups.length ? pickups[0].type : 'off'));
         var entry = {
@@ -588,6 +588,24 @@
   state.paySettings = loadPaySettings();
   state.tradedAway = loadTradedAway();
   state.trades = loadTrades();
+
+  // Trades logged before trade-tracking existed left their pickup as a plain, unlinked entry,
+  // so the pay math treated that day as an ordinary double (daily OT) instead of a swap.
+  // Re-link each one to its trade on load.
+  (function linkLegacyTradePickups() {
+    var changed = false;
+    state.trades.forEach(function (t) {
+      var pKey = dateKeyFromInputStr(t.pickup);
+      var list = state.pickups[pKey] || [];
+      if (list.some(function (p) { return p.tradeId === t.id; })) return;
+      var idx = list.findIndex(function (p) { return p.type === t.pickupShift && !p.fromTrade; });
+      if (idx !== -1) {
+        list[idx] = { type: list[idx].type, fromTrade: true, tradeId: t.id };
+        changed = true;
+      }
+    });
+    if (changed) savePickups();
+  })();
 
   function getCrew(id) {
     for (var i = 0; i < CREWS.length; i++) if (CREWS[i].id === id) return CREWS[i];
@@ -890,6 +908,11 @@
   function saveTrades() {
     try { localStorage.setItem('shiftcal_trades', JSON.stringify(state.trades)); } catch (e) {}
   }
+  // True if any logged trade says you're covering this date (the source of truth for trade days).
+  function isTradePickupDate(date) {
+    var key = dateKey(date);
+    return state.trades.some(function (t) { return dateKeyFromInputStr(t.pickup) === key; });
+  }
   function dateKeyFromInputStr(s) {
     var d = new Date(s + 'T00:00:00');
     return dateKey(d);
@@ -950,7 +973,7 @@
     // Eyebrow
     html += '<div class="eyebrow"><span class="line"></span>Rotation · 8 on · 4 off · 7 on · 2 off</div>';
     html += '<div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;">';
-    html += '<span style="font-size:11px;color:#7D818C;">Saved on this device</span>';
+    html += '<span style="font-size:11px;color:#7D818C;">Saved on this device \u00b7 build 11-02b</span>';
     html += '<button class="switch-link" id="export-data-btn" style="margin-left:auto;">Export data</button>';
     html += '<button class="switch-link" id="import-data-btn">Import data</button>';
     html += '<input type="file" id="import-file-input" accept="application/json" style="display:none;">';
@@ -1157,7 +1180,8 @@
     if (selTradePickups.length) {
       html += '<div style="font-size:11px;color:#7D818C;margin-top:6px;">From a trade \u2014 manage it in Shift Trades below instead.</div>';
     }
-    var selScheduledShift = myEffectiveShift(state.selected);
+    var selBaseRaw = myScheduledShiftForPay(state.selected);
+    var selScheduledShift = (selBaseRaw === 'day' || selBaseRaw === 'afternoon') ? selBaseRaw : null;
     var selExtraPickups = selPickups.filter(function (p) { return p.type !== selScheduledShift; });
     if (selPickups.length) {
       var selDuplicate = selPickups.length - selExtraPickups.length;
